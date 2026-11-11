@@ -57,7 +57,7 @@ export default function Home() {
   async function generateLocalVideo(index: number) {
     if (!board) return;
     const scene = board.scenes[index];
-    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\\n\\n");
+    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\n\n");
     setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "SUBMITTING", videoProvider: "comfyui", videoError: "" } : s) }) : prev);
     try {
       const response = await fetch("/api/local-video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
@@ -94,7 +94,7 @@ export default function Home() {
   function copyScenePrompt(index: number) {
     if (!board) return;
     const scene = board.scenes[index];
-    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\\n\\n");
+    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\n\n");
     navigator.clipboard.writeText(prompt);
   }
 
