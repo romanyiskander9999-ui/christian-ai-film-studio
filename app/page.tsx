@@ -227,7 +227,7 @@ export default function Home() {
 
   function saveOllamaSettings() {
     const url = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
-    if (!/^https?:\\/\\//i.test(url)) { setOllamaStatus("اكتب عنوانًا يبدأ بـ http:// أو https://"); return; }
+    if (!(url.startsWith("http://") || url.startsWith("https://")) ) { setOllamaStatus("اكتب عنوانًا يبدأ بـ http:// أو https://"); return; }
     localStorage.setItem("alyanbo3-ollama-settings", JSON.stringify({ url, model: ollamaModel.trim() }));
     setOllamaUrl(url);
     setOllamaStatus("تم حفظ الإعدادات على هذا المتصفح.");
