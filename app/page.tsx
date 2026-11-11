@@ -165,7 +165,7 @@ export default function Home() {
         await ffmpeg.writeFile(inputName, await fetchFile(clipBlob));
         const result = await ffmpeg.exec([
           "-i", inputName, "-map", "0:v:0", "-vf",
-          "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p",
+          "scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p",
           "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-movflags", "+faststart", outputName
         ]);
         if (result !== 0) throw new Error("تعذر تجهيز أحد المقاطع. تأكد أن الملفات فيديو صالح.");
@@ -303,7 +303,7 @@ export default function Home() {
         <div className="videoActions"><button className="primary" disabled={assemblyBusy || board.scenes.filter(scene => !!scene.videoUrl).length < 1} onClick={assembleFilm}>{assemblyBusy ? "جارٍ تجهيز الفيلم..." : "🎬 تجميع وتنزيل الفيلم MP4"}</button></div>
         {assemblyStatus && <p className="muted" role="status">{assemblyStatus}</p>}
         {finalFilmUrl && <div style={{ marginTop: 16 }}><video controls playsInline src={finalFilmUrl} className="generatedVideo" /><p><a className="primary" href={finalFilmUrl} download={(board.title || "alyanbo3-film").replace(/[^\p{L}\p{N}-]+/gu, "-") + ".mp4"}>تنزيل الفيلم النهائي MP4</a></p></div>}
-        <p className="muted">تنبيه: التصدير يحتاج ذاكرة متصفح ومساحة مؤقتة كافية. المقاطع الخارجية يجب أن تسمح بتنزيلها من المتصفح (CORS). عند رفض المصدر، نزّل المقطع من مزوده ثم ارفعه إلى المشهد. التصدير الحالي يضم الصوت المضاف كمسار واحد؛ لا ينشئ تعليقًا صوتيًا تلقائيًا.</p>
+        <p className="muted">تنبيه: التصدير يتم على جهازك داخل المتصفح وليس على خادم Vercel؛ لذلك قد يستغرق وقتًا على الأجهزة القديمة، ويحتاج ذاكرة ومساحة مؤقتة كافية. المقاطع الخارجية يجب أن تسمح بتنزيلها من المتصفح (CORS). عند رفض المصدر، نزّل المقطع من مزوده ثم ارفعه إلى المشهد. التصدير الحالي يضم الصوت المضاف كمسار واحد؛ لا ينشئ تعليقًا صوتيًا تلقائيًا.</p>
       </section>
       <div className="nextPhase"><b>المرحلة التالية: تحسين الصوت والانتقالات والعناوين</b><p>التجميع الأولي يعمل محليًا داخل المتصفح، دون خادم GPU أو خدمة مدفوعة. سيتم تطوير أدوات المونتاج تدريجيًا بعد اختبار التصدير.</p></div>
     </section>}
