@@ -172,7 +172,7 @@ export default function Home() {
         await ffmpeg.deleteFile(inputName);
         names.push(outputName);
       }
-      const concatText = names.map(name => "file '" + name + "'").join("\\n");
+      const concatText = names.map(name => "file '" + name + "'").join("\n");
       await ffmpeg.writeFile("list.txt", new TextEncoder().encode(concatText));
       let output = "film.mp4";
       if (soundtrackUrl) {
@@ -302,7 +302,7 @@ export default function Home() {
         {soundtrackName && <p className="muted">الملف الصوتي المختار: {soundtrackName}</p>}
         <div className="videoActions"><button className="primary" disabled={assemblyBusy || board.scenes.filter(scene => !!scene.videoUrl).length < 1} onClick={assembleFilm}>{assemblyBusy ? "جارٍ تجهيز الفيلم..." : "🎬 تجميع وتنزيل الفيلم MP4"}</button></div>
         {assemblyStatus && <p className="muted" role="status">{assemblyStatus}</p>}
-        {finalFilmUrl && <div style={{ marginTop: 16 }}><video controls playsInline src={finalFilmUrl} className="generatedVideo" /><p><a className="primary" href={finalFilmUrl} download={(board.title || "alyanbo3-film").replace(/[^\\p{L}\\p{N}-]+/gu, "-") + ".mp4"}>تنزيل الفيلم النهائي MP4</a></p></div>}
+        {finalFilmUrl && <div style={{ marginTop: 16 }}><video controls playsInline src={finalFilmUrl} className="generatedVideo" /><p><a className="primary" href={finalFilmUrl} download={(board.title || "alyanbo3-film").replace(/[^\p{L}\p{N}-]+/gu, "-") + ".mp4"}>تنزيل الفيلم النهائي MP4</a></p></div>}
         <p className="muted">تنبيه: التصدير يحتاج ذاكرة متصفح ومساحة مؤقتة كافية. المقاطع الخارجية يجب أن تسمح بتنزيلها من المتصفح (CORS). عند رفض المصدر، نزّل المقطع من مزوده ثم ارفعه إلى المشهد. التصدير الحالي يضم الصوت المضاف كمسار واحد؛ لا ينشئ تعليقًا صوتيًا تلقائيًا.</p>
       </section>
       <div className="nextPhase"><b>المرحلة التالية: تحسين الصوت والانتقالات والعناوين</b><p>التجميع الأولي يعمل محليًا داخل المتصفح، دون خادم GPU أو خدمة مدفوعة. سيتم تطوير أدوات المونتاج تدريجيًا بعد اختبار التصدير.</p></div>
