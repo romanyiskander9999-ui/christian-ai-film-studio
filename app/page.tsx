@@ -18,7 +18,7 @@ export default function Home() {
   const [ollamaStatus, setOllamaStatus] = useState("");
   const [ollamaBusy, setOllamaBusy] = useState(false);
   const [style, setStyle] = useState("سينمائي تاريخي واقعي");
-  const [duration, setDuration] = useState("3-5 دقائق");
+  const [duration, setDuration] = useState("60-90 ثانية");
   const [audience, setAudience] = useState("الأسرة والأطفال");
   const [reference, setReference] = useState("الكتاب المقدس");
   const [loading, setLoading] = useState(false);
@@ -263,11 +263,11 @@ export default function Home() {
           stream: true,
           format: "json",
           messages: [
-            { role: "system", content: "أنت كاتب سيناريو ومخرج فني متخصص في الأفلام الدينية المسيحية باللغة العربية. أخرج JSON صالحًا فقط بالمفاتيح: title, logline, synopsis, visualBible{world,palette,continuity,styleGuide}, characters[{name,description,visualPrompt}], scenes[{number,title,duration,visual,camera,dialogue,narration,prompt,imagePrompt,videoPrompt,negativePrompt,audioDesign}], accuracyNotes. أنشئ مشاهد مترابطة مناسبة للمدة، ووصفًا بصريًا مفصلًا، ودليلًا بصريًا موحدًا، وأوصاف توليد إنجليزية لكل شخصية ومشهد. احترم العقيدة والتقاليد القبطية الأرثوذكسية. إذا كانت القصة كتابية فالتزم بأحداث النص ولا تعرض الإضافات الدرامية كحقائق. لا تختلق اقتباسات كتابية أو آبائية أو مراجع. لا تضع كتابة أو شعارات داخل الصور." },
+            { role: "system", content: "أنت كاتب سيناريو ومخرج فني متخصص في الأفلام الدينية المسيحية باللغة العربية. أخرج JSON صالحًا فقط بالمفاتيح: title, logline, synopsis, visualBible{world,palette,continuity,styleGuide}, characters[{name,description,visualPrompt}], scenes[{number,title,duration,visual,camera,dialogue,narration,prompt,imagePrompt,videoPrompt,negativePrompt,audioDesign}], accuracyNotes. اجعل الناتج مختصرًا ومناسبًا لجهاز محدود الموارد: عند مدة 60-90 ثانية أنشئ 3 مشاهد فقط، بحد أقصى 4، وشخصيتين أو ثلاث، وملخصًا لا يتجاوز 3 جمل. اجعل كل وصف بصري وسينمائي موجزًا، وكل prompt إنجليزيًا من جملة أو جملتين فقط. لا تكرر المعلومات بين الحقول ولا تضف شروحًا خارج JSON. احترم العقيدة والتقاليد القبطية الأرثوذكسية. إذا كانت القصة كتابية فالتزم بأحداث النص ولا تعرض الإضافات الدرامية كحقائق. لا تختلق اقتباسات كتابية أو آبائية أو مراجع. لا تضع كتابة أو شعارات داخل الصور." },
             { role: "user", content: "الفكرة: " + idea + "\\nالطابع البصري: " + style + "\\nالمدة: " + duration + "\\nالجمهور: " + audience + "\\nالمرجع: " + reference }
           ],
-          // إعدادات خفيفة تناسب الأجهزة القديمة وتحد من طول الاستجابة
-          options: { temperature: 0.45, num_ctx: 4096, num_predict: 1800 },
+          // إعدادات اقتصادية جدًا للأجهزة القديمة: سياق أقصر ومخرجات محدودة
+          options: { temperature: 0.35, num_ctx: 2048, num_predict: 900 },
           keep_alive: "10m"
         }),
         // لا نقطع توليد السيناريو سريعًا؛ قد يكون النموذج بطيئًا على الأجهزة محدودة الذاكرة
@@ -381,7 +381,7 @@ export default function Home() {
         <p className="muted">يجب السماح لنطاق الموقع في OLLAMA_ORIGINS ثم إعادة تشغيل Ollama. راجع README. لا تفتح المنفذ 11434 للإنترنت ولا تستخدم علامة *.</p>
       </div>
       <div className="actions"><p>سيُنشأ السيناريو أولًا لمراجعته قبل الانتقال إلى إنتاج الفيديو.</p><button className="primary" onClick={generate} disabled={loading}>{loading ? "جارٍ إعداد السيناريو..." : "✦ إنشاء السيناريو والمشاهد ←"}</button></div>
-      {loading && <div className="summary" role="status" aria-live="polite" style={{ marginTop: 14 }}><b>حالة إنشاء السيناريو</b><p>{generationStatus || "جارٍ العمل..."}</p><p className="muted">اترك الصفحة مفتوحة ولا تضغط زر الإنشاء مرة أخرى. قد يستغرق النموذج وقتًا على الأجهزة القديمة.</p></div>}
+      {loading && <div className="summary" role="status" aria-live="polite" style={{ marginTop: 14 }}><b>حالة إنشاء السيناريو</b><p>{generationStatus || "جارٍ العمل..."}</p><p className="muted">اترك Ollama يعمل والصفحة مفتوحة. الوضع المختصر مصمم لفيلم 60-90 ثانية لتقليل وقت التوليد والذاكرة.</p></div>}
       {error && <div className="error">{error}</div>}
     </section>
 
