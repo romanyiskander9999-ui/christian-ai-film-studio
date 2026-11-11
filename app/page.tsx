@@ -299,7 +299,7 @@ export default function Home() {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\\n");
+        const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) {
           const trimmed = line.trim();
@@ -331,6 +331,7 @@ export default function Home() {
       storyboard.scenes = storyboard.scenes.map((scene: any, index: number) => ({ number: index + 1, ...scene, imagePrompt: scene.imagePrompt || scene.prompt || "", videoPrompt: scene.videoPrompt || scene.prompt || "", negativePrompt: scene.negativePrompt || "text, logos, watermark, inconsistent character appearance, distorted anatomy", audioDesign: scene.audioDesign || "" }));
       setBoard(storyboard);
       setActive(0);
+      setGenerationStatus("اكتمل السيناريو بنجاح.");
     } catch (e) {
       const message = e instanceof Error ? e.message : "حدث خطأ غير متوقع.";
       setError(message.includes("timed out") || message.includes("Timeout") || message.includes("timeout")
