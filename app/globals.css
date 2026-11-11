@@ -5,3 +5,5 @@
 
 .resultActions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.dangerButton{border-color:#75424a;color:#ffc7cb}
 @media(max-width:740px){.resultActions{width:100%;justify-content:flex-start}.resultActions button{flex:1 1 130px}}
+
+.videoMaker{margin-top:22px;padding:18px;border:1px solid #3e514c;border-radius:16px;background:rgba(24,43,38,.42)}.videoMaker>p{color:#b8c5be;font-size:14px;line-height:1.8}.videoActions{display:flex;gap:10px;flex-wrap:wrap}.generatedVideo{display:block;width:100%;max-width:720px;margin-top:16px;border-radius:12px;background:#090d0c}.videoMaker .error{margin-top:10px}
