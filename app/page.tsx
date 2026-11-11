@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string };
-type Storyboard = { title: string; logline: string; synopsis: string; characters: { name: string; description: string }[]; scenes: Scene[]; accuracyNotes: string[] };
+type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string };
+type Storyboard = { title: string; logline: string; synopsis: string; visualBible?: { world: string; palette: string; continuity: string; styleGuide: string }; characters: { name: string; description: string; visualPrompt?: string }[]; scenes: Scene[]; accuracyNotes: string[] };
 
 const samples = [
   ["الابن الضال", "قصة الابن الضال: شاب يطلب ميراثه ويسافر بعيدًا، ثم يبدد أمواله ويعود نادمًا إلى أبيه الذي يستقبله بمحبة وغفران."],
@@ -109,16 +109,17 @@ export default function Home() {
     {board && <section className="panel results">
       <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
       <div className="summary"><b>ملخص الفيلم</b><p>{board.synopsis}</p></div>
-      <h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p></article>)}</div>
+      {board.visualBible && <div className="summary"><b>الدليل البصري الموحد للفيلم</b><p><strong>العالم والحقبة:</strong> {board.visualBible.world}</p><p><strong>الألوان والإضاءة:</strong> {board.visualBible.palette}</p><p><strong>قواعد الاستمرارية:</strong> {board.visualBible.continuity}</p><p><strong>التوجيه الفني:</strong> {board.visualBible.styleGuide}</p></div>}<h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p>{c.visualPrompt && <div className="prompt">{c.visualPrompt}</div>}</article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
         {board.scenes?.[active] && <article className="sceneDetail"><span className="eyebrow">SCENE {String(active + 1).padStart(2, "0")}</span><h3>{board.scenes[active].title}</h3><small>{board.scenes[active].duration}</small>
-          <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><h4>وصف توليد اللقطة</h4><div className="prompt">{board.scenes[active].prompt}</div>
-          <button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].prompt)}>نسخ وصف المشهد</button>
+          <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
+          <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
+          <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
           <div className="sceneNav"><button disabled={active === 0} onClick={() => setActive(v => v - 1)}>السابق</button><button disabled={active === board.scenes.length - 1} onClick={() => setActive(v => v + 1)}>التالي</button></div>
         </article>}
       </div>
       {board.accuracyNotes?.length > 0 && <div className="summary"><b>ملاحظات المراجعة والتوثيق</b><ul>{board.accuracyNotes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>السيناريو ولوحة المشاهد يُحفظان تلقائيًا داخل متصفح هذا الجهاز، ويمكن تنزيل السيناريو كنص. إنتاج MP4 يتطلب في المرحلة التالية ربط مزود فيديو وصوت.</p></div>
+      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>تم تجهيز دليل بصري موحد، وأوصاف منفصلة للصورة وحركة الفيديو والصوت لكل مشهد. لا يزال إنتاج ملفات الفيديو الفعلية وMP4 يتطلب ربط مزود توليد خارجي.</p></div>
     </section>}
 
     <section className="pipeline"><span className="eyebrow">03 / خط الإنتاج</span><h2>من السيناريو إلى الفيلم النهائي</h2><div className="steps">{[["01","السيناريو","بناء القصة والحوار"],["02","الشخصيات","مرجع بصري موحد"],["03","المشاهد","صور ولقطات متحركة"],["04","الصوت","أداء عربي وموسيقى"],["05","المونتاج","تركيب وتصدير MP4"]].map(x => <div key={x[0]}><small>{x[0]}</small><b>{x[1]}</b><span>{x[2]}</span></div>)}</div></section>
