@@ -270,7 +270,19 @@ export default function Home() {
         signal: AbortSignal.timeout(240000),
         cache: "no-store"
       });
-      if (!response.ok) throw new Error("تعذر توليد السيناريو (" + response.status + "). تحقق من النموذج واتصال Ollama.");
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const errorPayload = await response.json();
+          detail = errorPayload.error || errorPayload.message || "";
+        } catch {
+          try { detail = await response.text(); } catch {}
+        }
+        if (response.status === 404 && /model/i.test(detail)) {
+          throw new Error("النموذج غير مثبت في Ollama: " + detail + " — نفّذ في PowerShell: ollama pull " + (ollamaModel.trim() || "qwen2.5:1.5b"));
+        }
+        throw new Error("رد Ollama (" + response.status + "): " + (detail || "تحقق من عنوان Ollama والنموذج."));
+      }
       const payload = await response.json();
       const output = payload.message?.content;
       if (!output) throw new Error("لم يُرجع Ollama نص السيناريو. تأكد من تثبيت النموذج المحدد.");
