@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string };
+type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string; videoFileName?: string };
 type Storyboard = { title: string; logline: string; synopsis: string; visualBible?: { world: string; palette: string; continuity: string; styleGuide: string }; characters: { name: string; description: string; visualPrompt?: string }[]; scenes: Scene[]; accuracyNotes: string[] };
 
 const samples = [
@@ -54,33 +54,20 @@ export default function Home() {
     const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\p{L}\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
   }
 
-  async function generateSceneVideo(index: number) {
-    if (!board) return;
-    const scene = board.scenes[index];
-    const base = scene.videoPrompt || scene.prompt || scene.visual;
-    const prompt = (base + ". Maintain consistent character appearance, costume, historical setting and cinematic lighting. No subtitles, captions, logos or watermarks.").slice(0, 950);
-    setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "SUBMITTING", videoError: "", videoUrl: "" } : s) }) : prev);
-    try {
-      const response = await fetch("/api/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, duration: 5, ratio: "1280:720" }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "تعذر بدء توليد الفيديو.");
-      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoTaskId: data.taskId, videoStatus: data.status || "PENDING", videoError: "" } : s) }) : prev);
-    } catch (e) {
-      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "FAILED", videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
+  function attachSceneVideo(index: number, file: File) {
+    if (!file.type.startsWith("video/")) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoError: "اختر ملف فيديو صالحًا." } : s) }) : prev);
+      return;
     }
+    const url = URL.createObjectURL(file);
+    setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoUrl: url, videoFileName: file.name, videoStatus: "LOCAL_FILE", videoError: "" } : s) }) : prev);
   }
 
-  async function refreshSceneVideo(index: number) {
-    if (!board?.scenes[index]?.videoTaskId) return;
-    try {
-      const response = await fetch("/api/video/" + board.scenes[index].videoTaskId, { cache: "no-store" });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "تعذر تحديث حالة الفيديو.");
-      const output = typeof data.output === "string" ? data.output : data.output?.url || data.output?.uri || "";
-      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: data.status, videoUrl: output || s.videoUrl, videoError: data.failure ? String(data.failure) : "" } : s) }) : prev);
-    } catch (e) {
-      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
-    }
+  function copyScenePrompt(index: number) {
+    if (!board) return;
+    const scene = board.scenes[index];
+    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\\n\\n");
+    navigator.clipboard.writeText(prompt);
   }
 
   function clearSavedProject() {
@@ -144,10 +131,16 @@ export default function Home() {
           <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
           <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
           <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
-          <div className="videoMaker"><b>إنتاج لقطة الفيديو الفعلية</b><p>يتم إرسال وصف المشهد إلى Runway لتوليد مقطع مدته 5 ثوانٍ. كل طلب قد يستهلك رصيدًا مدفوعًا.</p>
-          <div className="videoActions"><button className="primary" onClick={() => generateSceneVideo(active)} disabled={["SUBMITTING","PENDING","RUNNING","THROTTLED"].includes(board.scenes[active].videoStatus || "")}>{board.scenes[active].videoTaskId ? "إعادة توليد اللقطة" : "✦ توليد فيديو لهذا المشهد"}</button>
-          {board.scenes[active].videoTaskId && <button className="secondary" onClick={() => refreshSceneVideo(active)}>تحديث حالة التوليد</button>}</div>
-          {board.scenes[active].videoStatus && <p className="muted">حالة المهمة: {board.scenes[active].videoStatus}</p>}
+          <div className="videoMaker"><b>إنتاج المشهد بالفيديو المجاني</b>
+          <p>الوضع الافتراضي مجاني: انسخ وصف المشهد وافتح إحدى الخدمات التي تقدم رصيدًا مجانيًا عند توفره في حسابك. لن نرسل طلبًا مدفوعًا تلقائيًا ولن نستخدم Runway.</p>
+          <div className="freeProviders">
+            <a href="https://dreamina.capcut.com/" target="_blank" rel="noreferrer"><b>Dreamina</b><span>توليد فيديو من النص أو الصورة · رصيد مجاني حسب الحساب</span><small>فتح الموقع ↗</small></a>
+            <a href="https://pixverse.ai/" target="_blank" rel="noreferrer"><b>PixVerse</b><span>مقاطع قصيرة من النصوص والصور · رصيد مجاني حسب الخطة</span><small>فتح الموقع ↗</small></a>
+          </div>
+          <div className="videoActions"><button className="primary" onClick={() => copyScenePrompt(active)}>نسخ وصف الفيديو والمستبعدات</button>
+          <label className="secondary uploadVideo">رفع المقطع الناتج<input type="file" accept="video/*" onChange={e => { const f = e.target.files?.[0]; if (f) attachSceneVideo(active, f); e.currentTarget.value = ""; }} /></label></div>
+          <div className="localModel"><b>الخيار المفتوح المصدر: ComfyUI + Wan 2.2</b><p>شغّل ComfyUI على جهاز GPU أو خادم خاص، وجهّز Workflow بصيغة API. بعد ضبط متغيرات البيئة يمكن إرسال المشاهد إلى خادمك دون رسوم لكل فيديو.</p><a href="https://github.com/Wan-Video/Wan2.2" target="_blank" rel="noreferrer">مستودع Wan 2.2 ↗</a> · <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">ComfyUI ↗</a></div>
+          {board.scenes[active].videoFileName && <p className="muted">المقطع المرفوع: {board.scenes[active].videoFileName} — متاح في جلسة المتصفح الحالية.</p>}
           {board.scenes[active].videoError && <p className="error">{board.scenes[active].videoError}</p>}
           {board.scenes[active].videoUrl && <video controls playsInline src={board.scenes[active].videoUrl} className="generatedVideo" />}
           </div>
@@ -155,7 +148,7 @@ export default function Home() {
         </article>}
       </div>
       {board.accuracyNotes?.length > 0 && <div className="summary"><b>ملاحظات المراجعة والتوثيق</b><ul>{board.accuracyNotes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>تم تجهيز دليل بصري موحد، وأوصاف منفصلة للصورة وحركة الفيديو والصوت لكل مشهد. لا يزال إنتاج ملفات الفيديو الفعلية وMP4 يتطلب ربط مزود توليد خارجي.</p></div>
+      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>تم تجهيز مسار مجاني للخدمات الخارجية، ورفع المقاطع الناتجة، مع مسار اختياري لتشغيل Wan 2.2 عبر ComfyUI على خادم GPU تملكه. لا توجد خدمة مدفوعة مفعّلة افتراضيًا.</p></div>
     </section>}
 
     <section className="pipeline"><span className="eyebrow">03 / خط الإنتاج</span><h2>من السيناريو إلى الفيلم النهائي</h2><div className="steps">{[["01","السيناريو","بناء القصة والحوار"],["02","الشخصيات","مرجع بصري موحد"],["03","المشاهد","صور ولقطات متحركة"],["04","الصوت","أداء عربي وموسيقى"],["05","المونتاج","تركيب وتصدير MP4"]].map(x => <div key={x[0]}><small>{x[0]}</small><b>{x[1]}</b><span>{x[2]}</span></div>)}</div></section>
