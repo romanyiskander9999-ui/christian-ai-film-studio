@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string };
 type Storyboard = { title: string; logline: string; synopsis: string; characters: { name: string; description: string }[]; scenes: Scene[]; accuracyNotes: string[] };
@@ -21,6 +21,43 @@ export default function Home() {
   const [error, setError] = useState("");
   const [board, setBoard] = useState<Storyboard | null>(null);
   const [active, setActive] = useState(0);
+  const [savedAt, setSavedAt] = useState("");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("alyanbo3-film-studio-project");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.board?.title && Array.isArray(parsed.board.scenes)) {
+          setBoard(parsed.board);
+          setIdea(parsed.idea || "");
+          setSavedAt(parsed.savedAt || "تم استرجاع المشروع");
+        }
+      }
+    } catch { localStorage.removeItem("alyanbo3-film-studio-project"); }
+  }, []);
+
+  useEffect(() => {
+    if (!board) return;
+    const stamp = new Date().toLocaleString("ar-EG");
+    try {
+      localStorage.setItem("alyanbo3-film-studio-project", JSON.stringify({ board, idea, savedAt: stamp }));
+      setSavedAt(stamp);
+    } catch { setSavedAt("تعذر الحفظ على هذا الجهاز"); }
+  }, [board, idea]);
+
+  function exportScript() {
+    if (!board) return;
+    const lines = [board.title, "", board.logline, "", "ملخص الفيلم", board.synopsis, "", "الشخصيات", ...(board.characters || []).map(c => `${c.name}: ${c.description}`), "", "المشاهد", ...(board.scenes || []).flatMap(s => [`\\nالمشهد ${s.number}: ${s.title} (${s.duration})`, `الصورة: ${s.visual}`, `الكاميرا: ${s.camera}`, `الحوار: ${s.dialogue}`, `التعليق الصوتي: ${s.narration}`, `وصف التوليد: ${s.prompt}`]), "", "ملاحظات التوثيق", ...(board.accuracyNotes || []).map(n => `- ${n}`)];
+    const blob = new Blob(["\\uFEFF" + lines.join("\\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\\p{L}\\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  function clearSavedProject() {
+    if (!confirm("هل تريد حذف المشروع المحفوظ من هذا الجهاز؟")) return;
+    localStorage.removeItem("alyanbo3-film-studio-project"); setBoard(null); setIdea(""); setSavedAt("");
+  }
 
   async function generate() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
@@ -70,7 +107,7 @@ export default function Home() {
     </section>
 
     {board && <section className="panel results">
-      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p></div><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ السيناريو كاملًا</button></div>
+      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
       <div className="summary"><b>ملخص الفيلم</b><p>{board.synopsis}</p></div>
       <h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p></article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
@@ -81,7 +118,7 @@ export default function Home() {
         </article>}
       </div>
       {board.accuracyNotes?.length > 0 && <div className="summary"><b>ملاحظات المراجعة والتوثيق</b><ul>{board.accuracyNotes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>هذه النسخة تُنتج السيناريو ولوحة المشاهد. ربط مولد الفيديو والصوت سيكون في المرحلة التالية بعد إضافة مفاتيح الخدمات المطلوبة.</p></div>
+      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>السيناريو ولوحة المشاهد يُحفظان تلقائيًا داخل متصفح هذا الجهاز، ويمكن تنزيل السيناريو كنص. إنتاج MP4 يتطلب في المرحلة التالية ربط مزود فيديو وصوت.</p></div>
     </section>}
 
     <section className="pipeline"><span className="eyebrow">03 / خط الإنتاج</span><h2>من السيناريو إلى الفيلم النهائي</h2><div className="steps">{[["01","السيناريو","بناء القصة والحوار"],["02","الشخصيات","مرجع بصري موحد"],["03","المشاهد","صور ولقطات متحركة"],["04","الصوت","أداء عربي وموسيقى"],["05","المونتاج","تركيب وتصدير MP4"]].map(x => <div key={x[0]}><small>{x[0]}</small><b>{x[1]}</b><span>{x[2]}</span></div>)}</div></section>
