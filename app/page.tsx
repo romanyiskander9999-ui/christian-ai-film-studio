@@ -226,7 +226,7 @@ export default function Home() {
   }
 
   function saveOllamaSettings() {
-    const url = ollamaUrl.trim().replace(/\\/$/, "");
+    const url = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
     if (!/^https?:\\/\\//i.test(url)) { setOllamaStatus("اكتب عنوانًا يبدأ بـ http:// أو https://"); return; }
     localStorage.setItem("alyanbo3-ollama-settings", JSON.stringify({ url, model: ollamaModel.trim() }));
     setOllamaUrl(url);
@@ -234,7 +234,7 @@ export default function Home() {
   }
 
   async function testOllama() {
-    const base = ollamaUrl.trim().replace(/\\/$/, "");
+    const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
     setOllamaBusy(true);
     setOllamaStatus("جارٍ الاتصال بـ Ollama...");
     try {
@@ -253,7 +253,7 @@ export default function Home() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
     setLoading(true); setError(""); setBoard(null);
     try {
-      const base = ollamaUrl.trim().replace(/\\/$/, "");
+      const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
       const response = await fetch(base + "/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
