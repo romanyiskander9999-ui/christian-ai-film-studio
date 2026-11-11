@@ -13,6 +13,10 @@ const samples = [
 
 export default function Home() {
   const [idea, setIdea] = useState("");
+  const [ollamaUrl, setOllamaUrl] = useState("http://127.0.0.1:11434");
+  const [ollamaModel, setOllamaModel] = useState("qwen2.5:1.5b");
+  const [ollamaStatus, setOllamaStatus] = useState("");
+  const [ollamaBusy, setOllamaBusy] = useState(false);
   const [style, setStyle] = useState("سينمائي تاريخي واقعي");
   const [duration, setDuration] = useState("3-5 دقائق");
   const [audience, setAudience] = useState("الأسرة والأطفال");
@@ -30,6 +34,12 @@ export default function Home() {
 
   useEffect(() => {
     try {
+      const savedSettings = localStorage.getItem("alyanbo3-ollama-settings");
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings);
+        if (typeof settings.url === "string") setOllamaUrl(settings.url);
+        if (typeof settings.model === "string") setOllamaModel(settings.model);
+      }
       const saved = localStorage.getItem("alyanbo3-film-studio-project");
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -215,17 +225,61 @@ export default function Home() {
     localStorage.removeItem("alyanbo3-film-studio-project"); setBoard(null); setIdea(""); setSavedAt("");
   }
 
+  function saveOllamaSettings() {
+    const url = ollamaUrl.trim().replace(/\\/$/, "");
+    if (!/^https?:\\/\\//i.test(url)) { setOllamaStatus("اكتب عنوانًا يبدأ بـ http:// أو https://"); return; }
+    localStorage.setItem("alyanbo3-ollama-settings", JSON.stringify({ url, model: ollamaModel.trim() }));
+    setOllamaUrl(url);
+    setOllamaStatus("تم حفظ الإعدادات على هذا المتصفح.");
+  }
+
+  async function testOllama() {
+    const base = ollamaUrl.trim().replace(/\\/$/, "");
+    setOllamaBusy(true);
+    setOllamaStatus("جارٍ الاتصال بـ Ollama...");
+    try {
+      const response = await fetch(base + "/api/tags", { cache: "no-store" });
+      if (!response.ok) throw new Error("استجاب Ollama برمز " + response.status);
+      const data = await response.json();
+      const models = Array.isArray(data.models) ? data.models.map((m: { name?: string }) => m.name).filter(Boolean) : [];
+      const found = models.some((name: string) => name === ollamaModel || name.startsWith(ollamaModel + ":"));
+      setOllamaStatus(found ? "اتصال ناجح، والنموذج " + ollamaModel + " جاهز." : "اتصال ناجح، لكن النموذج غير مثبت. نفّذ: ollama pull " + ollamaModel + ". النماذج الموجودة: " + (models.join("، ") || "لا توجد نماذج"));
+    } catch (e) {
+      setOllamaStatus("فشل الاتصال. تأكد أن Ollama يعمل وأن OLLAMA_ORIGINS يسمح بعنوان الموقع. التفاصيل: " + (e instanceof Error ? e.message : "تعذر الاتصال"));
+    } finally { setOllamaBusy(false); }
+  }
+
   async function generate() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
     setLoading(true); setError(""); setBoard(null);
     try {
-      const response = await fetch("/api/storyboard", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idea, style, duration, audience, reference })
+      const base = ollamaUrl.trim().replace(/\\/$/, "");
+      const response = await fetch(base + "/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: ollamaModel.trim() || "qwen2.5:1.5b",
+          stream: false,
+          format: "json",
+          messages: [
+            { role: "system", content: "أنت كاتب سيناريو ومخرج فني متخصص في الأفلام الدينية المسيحية باللغة العربية. أخرج JSON صالحًا فقط بالمفاتيح: title, logline, synopsis, visualBible{world,palette,continuity,styleGuide}, characters[{name,description,visualPrompt}], scenes[{number,title,duration,visual,camera,dialogue,narration,prompt,imagePrompt,videoPrompt,negativePrompt,audioDesign}], accuracyNotes. أنشئ مشاهد مترابطة مناسبة للمدة، ووصفًا بصريًا مفصلًا، ودليلًا بصريًا موحدًا، وأوصاف توليد إنجليزية لكل شخصية ومشهد. احترم العقيدة والتقاليد القبطية الأرثوذكسية. إذا كانت القصة كتابية فالتزم بأحداث النص ولا تعرض الإضافات الدرامية كحقائق. لا تختلق اقتباسات كتابية أو آبائية أو مراجع. لا تضع كتابة أو شعارات داخل الصور." },
+            { role: "user", content: "الفكرة: " + idea + "\\nالطابع البصري: " + style + "\\nالمدة: " + duration + "\\nالجمهور: " + audience + "\\nالمرجع: " + reference }
+          ],
+          options: { temperature: 0.7 }
+        }),
+        signal: AbortSignal.timeout(240000),
+        cache: "no-store"
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "تعذر إنشاء السيناريو.");
-      setBoard(data.storyboard);
+      if (!response.ok) throw new Error("تعذر توليد السيناريو (" + response.status + "). تحقق من النموذج واتصال Ollama.");
+      const payload = await response.json();
+      const output = payload.message?.content;
+      if (!output) throw new Error("لم يُرجع Ollama نص السيناريو. تأكد من تثبيت النموذج المحدد.");
+      const storyboard = JSON.parse(output);
+      if (!storyboard.title || !Array.isArray(storyboard.scenes) || storyboard.scenes.length === 0) throw new Error("السيناريو الناتج غير مكتمل. أعد المحاولة أو استخدم نموذجًا أقوى.");
+      storyboard.visualBible ??= { world: "", palette: "", continuity: "", styleGuide: "" };
+      storyboard.characters = Array.isArray(storyboard.characters) ? storyboard.characters : [];
+      storyboard.scenes = storyboard.scenes.map((scene: any, index: number) => ({ number: index + 1, ...scene, imagePrompt: scene.imagePrompt || scene.prompt || "", videoPrompt: scene.videoPrompt || scene.prompt || "", negativePrompt: scene.negativePrompt || "text, logos, watermark, inconsistent character appearance, distorted anatomy", audioDesign: scene.audioDesign || "" }));
+      setBoard(storyboard);
       setActive(0);
     } catch (e) {
       setError(e instanceof Error ? e.message : "حدث خطأ غير متوقع.");
@@ -257,6 +311,20 @@ export default function Home() {
         <label className="field">مدة الفيلم<select value={duration} onChange={e => setDuration(e.target.value)}><option>60-90 ثانية</option><option>2-3 دقائق</option><option>3-5 دقائق</option><option>5-10 دقائق</option><option>10-20 دقيقة</option></select></label>
         <label className="field">الجمهور المستهدف<select value={audience} onChange={e => setAudience(e.target.value)}><option>الأسرة والأطفال</option><option>الشباب</option><option>جميع الأعمار</option><option>المهتمون بالدراسات الكتابية</option></select></label>
         <label className="field">المرجع الأساسي<select value={reference} onChange={e => setReference(e.target.value)}><option>الكتاب المقدس</option><option>سير القديسين والتراث القبطي</option><option>قصة تعليمية مستوحاة من القيم المسيحية</option><option>نص أقدمه بنفسي مع مراجع</option></select></label>
+      </div>
+      <div className="localModel" style={{ marginTop: 18 }}>
+        <b>محرك السيناريو المجاني — Ollama على جهازك</b>
+        <p>يتصل المتصفح مباشرة ببرنامج Ollama على جهازك. لا يمر نص القصة عبر خادم مدفوع، وتُحفظ الإعدادات في هذا المتصفح.</p>
+        <div className="grid">
+          <label className="field">عنوان Ollama<input value={ollamaUrl} onChange={e => setOllamaUrl(e.target.value)} placeholder="http://127.0.0.1:11434" /></label>
+          <label className="field">اسم النموذج<input value={ollamaModel} onChange={e => setOllamaModel(e.target.value)} placeholder="qwen2.5:1.5b" /></label>
+        </div>
+        <div className="videoActions" style={{ marginTop: 12 }}>
+          <button type="button" className="secondary" onClick={saveOllamaSettings}>حفظ الإعدادات</button>
+          <button type="button" className="secondary" onClick={testOllama} disabled={ollamaBusy}>{ollamaBusy ? "جارٍ الاختبار..." : "اختبار اتصال Ollama"}</button>
+        </div>
+        {ollamaStatus && <p className="muted" role="status">{ollamaStatus}</p>}
+        <p className="muted">يجب السماح لنطاق الموقع في OLLAMA_ORIGINS ثم إعادة تشغيل Ollama. راجع README. لا تفتح المنفذ 11434 للإنترنت ولا تستخدم علامة *.</p>
       </div>
       <div className="actions"><p>سيُنشأ السيناريو أولًا لمراجعته قبل الانتقال إلى إنتاج الفيديو.</p><button className="primary" onClick={generate} disabled={loading}>{loading ? "جارٍ إعداد السيناريو..." : "✦ إنشاء السيناريو والمشاهد ←"}</button></div>
       {error && <div className="error">{error}</div>}
