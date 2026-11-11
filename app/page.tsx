@@ -159,8 +159,13 @@ export default function Home() {
           <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
           <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
           <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
-          <div className="videoMaker"><b>إنتاج المشهد بالفيديو المجاني</b>
-          <p>الوضع الافتراضي مجاني: انسخ وصف المشهد وافتح إحدى الخدمات التي تقدم رصيدًا مجانيًا عند توفره في حسابك. لن نرسل طلبًا مدفوعًا تلقائيًا ولن نستخدم Runway.</p>
+          <div className="videoMaker"><b>توليد الفيديو السحابي — Wan 2.2</b>
+          <p>يمكنك تجربة محرك Wan 2.2 على Hugging Face من داخل الاستوديو. انسخ وصف المشهد أولًا ثم الصقه في مساحة التوليد أدناه. الخدمة مجانية بحصة يومية محدودة وقد تتطلب تسجيل الدخول أو الانتظار، ولا نضمن استمرار توافر المساحة العامة.</p>
+          <div className="videoActions"><button className="primary" onClick={() => copyScenePrompt(active)}>نسخ وصف المشهد للفيديو</button><a className="secondary" href="https://huggingface.co/spaces/mastaP/wan22-remix-sfw-t2v" target="_blank" rel="noreferrer">فتح محرك Wan 2.2 في نافذة مستقلة ↗</a></div>
+          <div style={{ marginTop: 16, border: "1px solid #d8d0c2", borderRadius: 14, overflow: "hidden", background: "#111" }}>
+            <iframe title="Wan 2.2 cloud video generator" src="https://mastap-wan22-remix-sfw-t2v.hf.space" style={{ width: "100%", height: 760, border: 0, background: "#111" }} allow="clipboard-write; fullscreen" loading="lazy" />
+          </div>
+          <p className="muted">ملاحظة: هذه مساحة عامة مستقلة مضمّنة داخل الاستوديو. إدخال الوصف وبدء التوليد يتمان داخل واجهتها؛ لا نرسل بياناتك إليها إلا عندما تستخدمها بنفسك.</p>
           <div className="freeProviders">
             <a href="https://dreamina.capcut.com/" target="_blank" rel="noreferrer"><b>Dreamina</b><span>توليد فيديو من النص أو الصورة · رصيد مجاني حسب الحساب</span><small>فتح الموقع ↗</small></a>
             <a href="https://pixverse.ai/" target="_blank" rel="noreferrer"><b>PixVerse</b><span>مقاطع قصيرة من النصوص والصور · رصيد مجاني حسب الخطة</span><small>فتح الموقع ↗</small></a>
