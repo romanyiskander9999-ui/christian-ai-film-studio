@@ -22,6 +22,7 @@ export default function Home() {
   const [audience, setAudience] = useState("الأسرة والأطفال");
   const [reference, setReference] = useState("الكتاب المقدس");
   const [loading, setLoading] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState("");
   const [error, setError] = useState("");
   const [board, setBoard] = useState<Storyboard | null>(null);
   const [active, setActive] = useState(0);
@@ -251,7 +252,7 @@ export default function Home() {
 
   async function generate() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
-    setLoading(true); setError(""); setBoard(null);
+    setLoading(true); setError(""); setBoard(null); setGenerationStatus("جارٍ الاتصال بالنموذج وتحميله في الذاكرة...");
     try {
       const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
       const response = await fetch(base + "/api/chat", {
@@ -259,7 +260,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: ollamaModel.trim() || "qwen2.5:1.5b",
-          stream: false,
+          stream: true,
           format: "json",
           messages: [
             { role: "system", content: "أنت كاتب سيناريو ومخرج فني متخصص في الأفلام الدينية المسيحية باللغة العربية. أخرج JSON صالحًا فقط بالمفاتيح: title, logline, synopsis, visualBible{world,palette,continuity,styleGuide}, characters[{name,description,visualPrompt}], scenes[{number,title,duration,visual,camera,dialogue,narration,prompt,imagePrompt,videoPrompt,negativePrompt,audioDesign}], accuracyNotes. أنشئ مشاهد مترابطة مناسبة للمدة، ووصفًا بصريًا مفصلًا، ودليلًا بصريًا موحدًا، وأوصاف توليد إنجليزية لكل شخصية ومشهد. احترم العقيدة والتقاليد القبطية الأرثوذكسية. إذا كانت القصة كتابية فالتزم بأحداث النص ولا تعرض الإضافات الدرامية كحقائق. لا تختلق اقتباسات كتابية أو آبائية أو مراجع. لا تضع كتابة أو شعارات داخل الصور." },
@@ -286,9 +287,43 @@ export default function Home() {
         }
         throw new Error("رد Ollama (" + response.status + "): " + (detail || "تحقق من عنوان Ollama والنموذج."));
       }
-      const payload = await response.json();
-      const output = payload.message?.content;
+      // اقرأ استجابة Ollama تدريجيًا بدل انتظار JSON كامل؛ هذا يمنع ظهور الواجهة وكأنها متوقفة.
+      if (!response.body) throw new Error("المتصفح لم يستطع قراءة تدفق الاستجابة من Ollama.");
+      setGenerationStatus("النموذج يعمل الآن ويكتب السيناريو...");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let output = "";
+      let receivedError = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let chunk: any;
+          try { chunk = JSON.parse(trimmed); } catch { continue; }
+          if (chunk.error) receivedError = String(chunk.error);
+          const piece = chunk.message?.content;
+          if (typeof piece === "string" && piece) {
+            output += piece;
+            setGenerationStatus("جارٍ كتابة السيناريو... تم استقبال " + output.length.toLocaleString("ar-EG") + " حرفًا");
+          }
+        }
+      }
+      if (buffer.trim()) {
+        try {
+          const last = JSON.parse(buffer);
+          if (last.error) receivedError = String(last.error);
+          if (typeof last.message?.content === "string") output += last.message.content;
+        } catch { /* Ignore a trailing incomplete transport frame. */ }
+      }
+      if (receivedError) throw new Error("خطأ من Ollama: " + receivedError);
       if (!output) throw new Error("لم يُرجع Ollama نص السيناريو. تأكد من تثبيت النموذج المحدد.");
+      setGenerationStatus("اكتمل النص، جارٍ تنظيم المشاهد...");
       const storyboard = JSON.parse(output);
       if (!storyboard.title || !Array.isArray(storyboard.scenes) || storyboard.scenes.length === 0) throw new Error("السيناريو الناتج غير مكتمل. أعد المحاولة أو استخدم نموذجًا أقوى.");
       storyboard.visualBible ??= { world: "", palette: "", continuity: "", styleGuide: "" };
@@ -345,6 +380,7 @@ export default function Home() {
         <p className="muted">يجب السماح لنطاق الموقع في OLLAMA_ORIGINS ثم إعادة تشغيل Ollama. راجع README. لا تفتح المنفذ 11434 للإنترنت ولا تستخدم علامة *.</p>
       </div>
       <div className="actions"><p>سيُنشأ السيناريو أولًا لمراجعته قبل الانتقال إلى إنتاج الفيديو.</p><button className="primary" onClick={generate} disabled={loading}>{loading ? "جارٍ إعداد السيناريو..." : "✦ إنشاء السيناريو والمشاهد ←"}</button></div>
+      {loading && <div className="summary" role="status" aria-live="polite" style={{ marginTop: 14 }}><b>حالة إنشاء السيناريو</b><p>{generationStatus || "جارٍ العمل..."}</p><p className="muted">اترك الصفحة مفتوحة ولا تضغط زر الإنشاء مرة أخرى. قد يستغرق النموذج وقتًا على الأجهزة القديمة.</p></div>}
       {error && <div className="error">{error}</div>}
     </section>
 
