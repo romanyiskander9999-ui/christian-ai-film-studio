@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string; videoFileName?: string; videoProvider?: string };
+type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string; videoFileName?: string; videoProvider?: string; cloudTaskId?: string; cloudStatus?: string };
 type Storyboard = { title: string; logline: string; synopsis: string; visualBible?: { world: string; palette: string; continuity: string; styleGuide: string }; characters: { name: string; description: string; visualPrompt?: string }[]; scenes: Scene[]; accuracyNotes: string[] };
 
 const samples = [
@@ -52,6 +52,34 @@ export default function Home() {
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\p{L}\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  async function generateCloudVideo(index: number) {
+    if (!board) return;
+    const scene = board.scenes[index];
+    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\\n\\n");
+    setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, cloudStatus: "SUBMITTING", videoError: "" } : s) }) : prev);
+    try {
+      const response = await fetch("/api/cloud-video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "تعذر بدء التوليد السحابي.");
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, cloudTaskId: data.taskId, cloudStatus: data.status || "QUEUED", videoProvider: "huggingface-wan", videoError: "" } : s) }) : prev);
+    } catch (e) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, cloudStatus: "FAILED", videoError: e instanceof Error ? e.message : "حدث خطأ أثناء إرسال المهمة." } : s) }) : prev);
+    }
+  }
+
+  async function refreshCloudVideo(index: number) {
+    const taskId = board?.scenes[index]?.cloudTaskId;
+    if (!taskId) return;
+    try {
+      const response = await fetch("/api/cloud-video/" + encodeURIComponent(taskId), { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "تعذر متابعة التوليد السحابي.");
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, cloudStatus: data.status, videoUrl: data.videoUrl || s.videoUrl, videoError: data.error || "" } : s) }) : prev);
+    } catch (e) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoError: e instanceof Error ? e.message : "حدث خطأ أثناء تحديث المهمة." } : s) }) : prev);
+    }
   }
 
   async function generateLocalVideo(index: number) {
@@ -160,12 +188,12 @@ export default function Home() {
           <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
           <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
           <div className="videoMaker"><b>توليد الفيديو السحابي — Wan 2.2</b>
-          <p>يمكنك تجربة محرك Wan 2.2 على Hugging Face من داخل الاستوديو. انسخ وصف المشهد أولًا ثم الصقه في مساحة التوليد أدناه. الخدمة مجانية بحصة يومية محدودة وقد تتطلب تسجيل الدخول أو الانتظار، ولا نضمن استمرار توافر المساحة العامة.</p>
-          <div className="videoActions"><button className="primary" onClick={() => copyScenePrompt(active)}>نسخ وصف المشهد للفيديو</button><a className="secondary" href="https://huggingface.co/spaces/mastaP/wan22-remix-sfw-t2v" target="_blank" rel="noreferrer">فتح محرك Wan 2.2 في نافذة مستقلة ↗</a></div>
+          <p>يمكنك إرسال وصف المشهد مباشرة من هذا الزر إلى محرك Wan 2.2 على Hugging Face ومتابعة حالة المهمة من الاستوديو. الخدمة المجانية محدودة بحصة يومية وطابور انتظار، وقد تتوقف المساحة العامة مؤقتًا.</p>
+          <div className="videoActions"><button className="primary" onClick={() => generateCloudVideo(active)} disabled={board.scenes[active].cloudStatus === "SUBMITTING"}>{board.scenes[active].cloudStatus === "SUBMITTING" ? "جارٍ إرسال المهمة..." : "✦ إنتاج الفيديو مباشرة مجانًا"}</button><button className="secondary" onClick={() => copyScenePrompt(active)}>نسخ وصف المشهد للفيديو</button>{board.scenes[active].cloudTaskId && <button className="secondary" onClick={() => refreshCloudVideo(active)}>تحديث حالة التوليد ({board.scenes[active].cloudStatus || "قيد الانتظار"})</button>}<a className="secondary" href="https://huggingface.co/spaces/mastaP/wan22-remix-sfw-t2v" target="_blank" rel="noreferrer">فتح محرك Wan 2.2 في نافذة مستقلة ↗</a></div>
           <div style={{ marginTop: 16, border: "1px solid #d8d0c2", borderRadius: 14, overflow: "hidden", background: "#111" }}>
             <iframe title="Wan 2.2 cloud video generator" src="https://mastap-wan22-remix-sfw-t2v.hf.space" style={{ width: "100%", height: 760, border: 0, background: "#111" }} allow="clipboard-write; fullscreen" loading="lazy" />
           </div>
-          <p className="muted">ملاحظة: هذه مساحة عامة مستقلة مضمّنة داخل الاستوديو. إدخال الوصف وبدء التوليد يتمان داخل واجهتها؛ لا نرسل بياناتك إليها إلا عندما تستخدمها بنفسك.</p>
+          <p className="muted">يمكنك أيضًا استخدام واجهة المساحة المضمنة كخيار احتياطي يدوي. عند الضغط على زر الإنتاج المباشر، يُرسل وصف المشهد إلى خوادم Hugging Face لتوليد المقطع.</p>
           <div className="freeProviders">
             <a href="https://dreamina.capcut.com/" target="_blank" rel="noreferrer"><b>Dreamina</b><span>توليد فيديو من النص أو الصورة · رصيد مجاني حسب الحساب</span><small>فتح الموقع ↗</small></a>
             <a href="https://pixverse.ai/" target="_blank" rel="noreferrer"><b>PixVerse</b><span>مقاطع قصيرة من النصوص والصور · رصيد مجاني حسب الخطة</span><small>فتح الموقع ↗</small></a>
