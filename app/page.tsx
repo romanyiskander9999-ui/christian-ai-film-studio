@@ -48,10 +48,10 @@ export default function Home() {
 
   function exportScript() {
     if (!board) return;
-    const lines = [board.title, "", board.logline, "", "ملخص الفيلم", board.synopsis, "", "الشخصيات", ...(board.characters || []).map(c => `${c.name}: ${c.description}`), "", "المشاهد", ...(board.scenes || []).flatMap(s => [`\\nالمشهد ${s.number}: ${s.title} (${s.duration})`, `الصورة: ${s.visual}`, `الكاميرا: ${s.camera}`, `الحوار: ${s.dialogue}`, `التعليق الصوتي: ${s.narration}`, `وصف التوليد: ${s.prompt}`]), "", "ملاحظات التوثيق", ...(board.accuracyNotes || []).map(n => `- ${n}`)];
-    const blob = new Blob(["\\uFEFF" + lines.join("\\n")], { type: "text/plain;charset=utf-8" });
+    const lines = [board.title, "", board.logline, "", "ملخص الفيلم", board.synopsis, "", "الشخصيات", ...(board.characters || []).map(c => `${c.name}: ${c.description}`), "", "المشاهد", ...(board.scenes || []).flatMap(s => [`\nالمشهد ${s.number}: ${s.title} (${s.duration})`, `الصورة: ${s.visual}`, `الكاميرا: ${s.camera}`, `الحوار: ${s.dialogue}`, `التعليق الصوتي: ${s.narration}`, `وصف التوليد: ${s.prompt}`]), "", "ملاحظات التوثيق", ...(board.accuracyNotes || []).map(n => `- ${n}`)];
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\\p{L}\\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\p{L}\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
   }
 
   function clearSavedProject() {
