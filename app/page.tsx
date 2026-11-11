@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string; videoFileName?: string };
+type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string; videoFileName?: string; videoProvider?: string };
 type Storyboard = { title: string; logline: string; synopsis: string; visualBible?: { world: string; palette: string; continuity: string; styleGuide: string }; characters: { name: string; description: string; visualPrompt?: string }[]; scenes: Scene[]; accuracyNotes: string[] };
 
 const samples = [
@@ -52,6 +52,34 @@ export default function Home() {
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\p{L}\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  async function generateLocalVideo(index: number) {
+    if (!board) return;
+    const scene = board.scenes[index];
+    const prompt = [scene.videoPrompt || scene.prompt || scene.visual, scene.negativePrompt ? "Negative prompt: " + scene.negativePrompt : ""].filter(Boolean).join("\\n\\n");
+    setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "SUBMITTING", videoProvider: "comfyui", videoError: "" } : s) }) : prev);
+    try {
+      const response = await fetch("/api/local-video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "تعذر بدء التوليد على خادمك.");
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoTaskId: data.taskId, videoStatus: data.status || "queued", videoProvider: "comfyui", videoError: "" } : s) }) : prev);
+    } catch (e) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "FAILED", videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
+    }
+  }
+
+  async function refreshLocalVideo(index: number) {
+    const taskId = board?.scenes[index]?.videoTaskId;
+    if (!taskId) return;
+    try {
+      const response = await fetch("/api/local-video/" + taskId, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "تعذر تحديث حالة ComfyUI.");
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: data.status, videoUrl: data.videoUrl || s.videoUrl, videoError: "" } : s) }) : prev);
+    } catch (e) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
+    }
   }
 
   function attachSceneVideo(index: number, file: File) {
@@ -139,7 +167,7 @@ export default function Home() {
           </div>
           <div className="videoActions"><button className="primary" onClick={() => copyScenePrompt(active)}>نسخ وصف الفيديو والمستبعدات</button>
           <label className="secondary uploadVideo">رفع المقطع الناتج<input type="file" accept="video/*" onChange={e => { const f = e.target.files?.[0]; if (f) attachSceneVideo(active, f); e.currentTarget.value = ""; }} /></label></div>
-          <div className="localModel"><b>الخيار المفتوح المصدر: ComfyUI + Wan 2.2</b><p>شغّل ComfyUI على جهاز GPU أو خادم خاص، وجهّز Workflow بصيغة API. بعد ضبط متغيرات البيئة يمكن إرسال المشاهد إلى خادمك دون رسوم لكل فيديو.</p><a href="https://github.com/Wan-Video/Wan2.2" target="_blank" rel="noreferrer">مستودع Wan 2.2 ↗</a> · <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">ComfyUI ↗</a></div>
+          <div className="localModel"><b>الخيار المفتوح المصدر: ComfyUI + Wan 2.2</b><p>شغّل ComfyUI على جهاز GPU أو خادم خاص، وجهّز Workflow بصيغة API، ثم اضبط متغيرات البيئة المذكورة في دليل المشروع. لن تُفرض رسوم مزود فيديو خارجي.</p><div className="videoActions"><button className="secondary" onClick={() => generateLocalVideo(active)}>إرسال المشهد إلى Wan 2.2</button>{board.scenes[active].videoProvider === "comfyui" && board.scenes[active].videoTaskId && <button className="secondary" onClick={() => refreshLocalVideo(active)}>تحديث حالة Wan 2.2</button>}</div><a href="https://github.com/Wan-Video/Wan2.2" target="_blank" rel="noreferrer">مستودع Wan 2.2 ↗</a> · <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">ComfyUI ↗</a></div>
           {board.scenes[active].videoFileName && <p className="muted">المقطع المرفوع: {board.scenes[active].videoFileName} — متاح في جلسة المتصفح الحالية.</p>}
           {board.scenes[active].videoError && <p className="error">{board.scenes[active].videoError}</p>}
           {board.scenes[active].videoUrl && <video controls playsInline src={board.scenes[active].videoUrl} className="generatedVideo" />}
