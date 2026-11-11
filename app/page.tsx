@@ -265,9 +265,12 @@ export default function Home() {
             { role: "system", content: "أنت كاتب سيناريو ومخرج فني متخصص في الأفلام الدينية المسيحية باللغة العربية. أخرج JSON صالحًا فقط بالمفاتيح: title, logline, synopsis, visualBible{world,palette,continuity,styleGuide}, characters[{name,description,visualPrompt}], scenes[{number,title,duration,visual,camera,dialogue,narration,prompt,imagePrompt,videoPrompt,negativePrompt,audioDesign}], accuracyNotes. أنشئ مشاهد مترابطة مناسبة للمدة، ووصفًا بصريًا مفصلًا، ودليلًا بصريًا موحدًا، وأوصاف توليد إنجليزية لكل شخصية ومشهد. احترم العقيدة والتقاليد القبطية الأرثوذكسية. إذا كانت القصة كتابية فالتزم بأحداث النص ولا تعرض الإضافات الدرامية كحقائق. لا تختلق اقتباسات كتابية أو آبائية أو مراجع. لا تضع كتابة أو شعارات داخل الصور." },
             { role: "user", content: "الفكرة: " + idea + "\\nالطابع البصري: " + style + "\\nالمدة: " + duration + "\\nالجمهور: " + audience + "\\nالمرجع: " + reference }
           ],
-          options: { temperature: 0.7 }
+          // إعدادات خفيفة تناسب الأجهزة القديمة وتحد من طول الاستجابة
+          options: { temperature: 0.45, num_ctx: 4096, num_predict: 1800 },
+          keep_alive: "10m"
         }),
-        signal: AbortSignal.timeout(240000),
+        // لا نقطع توليد السيناريو سريعًا؛ قد يكون النموذج بطيئًا على الأجهزة محدودة الذاكرة
+        signal: AbortSignal.timeout(900000),
         cache: "no-store"
       });
       if (!response.ok) {
@@ -294,7 +297,10 @@ export default function Home() {
       setBoard(storyboard);
       setActive(0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "حدث خطأ غير متوقع.");
+      const message = e instanceof Error ? e.message : "حدث خطأ غير متوقع.";
+      setError(message.includes("timed out") || message.includes("Timeout") || message.includes("timeout")
+        ? "استغرق النموذج وقتًا أطول من المتوقع. اترك Ollama يعمل، وجرّب فكرة أقصر أو مدة فيلم 60-90 ثانية. إذا تكررت المشكلة فالجهاز لا يستطيع توليد هذا الحجم بسرعة كافية."
+        : message);
     } finally { setLoading(false); }
   }
 
