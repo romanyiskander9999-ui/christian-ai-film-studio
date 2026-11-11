@@ -22,6 +22,11 @@ export default function Home() {
   const [board, setBoard] = useState<Storyboard | null>(null);
   const [active, setActive] = useState(0);
   const [savedAt, setSavedAt] = useState("");
+  const [assemblyStatus, setAssemblyStatus] = useState("");
+  const [assemblyBusy, setAssemblyBusy] = useState(false);
+  const [soundtrackUrl, setSoundtrackUrl] = useState("");
+  const [soundtrackName, setSoundtrackName] = useState("");
+  const [finalFilmUrl, setFinalFilmUrl] = useState("");
 
   useEffect(() => {
     try {
@@ -126,6 +131,85 @@ export default function Home() {
     navigator.clipboard.writeText(prompt);
   }
 
+  async function assembleFilm() {
+    if (!board) return;
+    const clips = board.scenes.map((scene, index) => ({ scene, index })).filter(({ scene }) => !!scene.videoUrl);
+    if (clips.length < 1) {
+      setAssemblyStatus("أنتج أو ارفع مقطع فيديو واحدًا على الأقل قبل التجميع.");
+      return;
+    }
+    setAssemblyBusy(true);
+    setAssemblyStatus("جارٍ تحميل أداة المونتاج وتجهيز المقاطع...");
+    setFinalFilmUrl("");
+    let ffmpeg: any;
+    try {
+      const { FFmpeg } = await import("@ffmpeg/ffmpeg");
+      const { toBlobURL, fetchFile } = await import("@ffmpeg/util");
+      ffmpeg = new FFmpeg();
+      ffmpeg.on("progress", ({ progress }: { progress: number }) => {
+        setAssemblyStatus("جارٍ تجميع الفيلم: " + Math.max(0, Math.min(100, Math.round(progress * 100))) + "%");
+      });
+      const base = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
+      await ffmpeg.load({
+        coreURL: await toBlobURL(base + "/ffmpeg-core.js", "text/javascript"),
+        wasmURL: await toBlobURL(base + "/ffmpeg-core.wasm", "application/wasm")
+      });
+      const names: string[] = [];
+      for (let i = 0; i < clips.length; i++) {
+        setAssemblyStatus("جارٍ تجهيز المشهد " + (i + 1) + " من " + clips.length + "...");
+        const inputName = "input_" + i + ".bin";
+        const outputName = "scene_" + i + ".mp4";
+        const clipResponse = await fetch(clips[i].scene.videoUrl!, { mode: "cors" });
+        if (!clipResponse.ok) throw new Error("تعذر تنزيل فيديو المشهد " + (clips[i].index + 1) + ". ارفع المقطع من جهازك ثم أعد المحاولة.");
+        const clipBlob = await clipResponse.blob();
+        await ffmpeg.writeFile(inputName, await fetchFile(clipBlob));
+        const result = await ffmpeg.exec([
+          "-i", inputName, "-map", "0:v:0", "-vf",
+          "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p",
+          "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-movflags", "+faststart", outputName
+        ]);
+        if (result !== 0) throw new Error("تعذر تجهيز أحد المقاطع. تأكد أن الملفات فيديو صالح.");
+        await ffmpeg.deleteFile(inputName);
+        names.push(outputName);
+      }
+      const concatText = names.map(name => "file '" + name + "'").join("\\n");
+      await ffmpeg.writeFile("list.txt", new TextEncoder().encode(concatText));
+      let output = "film.mp4";
+      if (soundtrackUrl) {
+        setAssemblyStatus("جارٍ إضافة التعليق الصوتي أو الموسيقى...");
+        const audioResponse = await fetch(soundtrackUrl);
+        if (!audioResponse.ok) throw new Error("تعذر قراءة الملف الصوتي المرفوع.");
+        await ffmpeg.writeFile("soundtrack.bin", await fetchFile(await audioResponse.blob()));
+        const result = await ffmpeg.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-stream_loop", "-1", "-i", "soundtrack.bin", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", output]);
+        if (result !== 0) throw new Error("تعذر دمج الملف الصوتي. جرّب ملف MP3 أو WAV.");
+      } else {
+        const result = await ffmpeg.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c:v", "copy", "-an", "-movflags", "+faststart", output]);
+        if (result !== 0) throw new Error("تعذر دمج المشاهد. حاول تقليل عدد المقاطع أو أحجامها.");
+      }
+      const bytes = await ffmpeg.readFile(output);
+      const blob = new Blob([bytes], { type: "video/mp4" });
+      const url = URL.createObjectURL(blob);
+      setFinalFilmUrl(url);
+      setAssemblyStatus("اكتمل الفيلم بنجاح. يمكنك معاينته وتنزيله.");
+    } catch (e) {
+      setAssemblyStatus(e instanceof Error ? e.message : "حدث خطأ أثناء تجميع الفيلم.");
+    } finally {
+      if (ffmpeg) { try { await ffmpeg.terminate(); } catch {} }
+      setAssemblyBusy(false);
+    }
+  }
+
+  function attachSoundtrack(file: File) {
+    if (!file.type.startsWith("audio/")) {
+      setAssemblyStatus("اختر ملفًا صوتيًا صالحًا مثل MP3 أو WAV.");
+      return;
+    }
+    if (soundtrackUrl) URL.revokeObjectURL(soundtrackUrl);
+    setSoundtrackUrl(URL.createObjectURL(file));
+    setSoundtrackName(file.name);
+    setFinalFilmUrl("");
+  }
+
   function clearSavedProject() {
     if (!confirm("هل تريد حذف المشروع المحفوظ من هذا الجهاز؟")) return;
     localStorage.removeItem("alyanbo3-film-studio-project"); setBoard(null); setIdea(""); setSavedAt("");
@@ -209,7 +293,19 @@ export default function Home() {
         </article>}
       </div>
       {board.accuracyNotes?.length > 0 && <div className="summary"><b>ملاحظات المراجعة والتوثيق</b><ul>{board.accuracyNotes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>}
-      <div className="nextPhase"><b>المرحلة التالية: توليد الصور والفيديو والصوت</b><p>تم تجهيز مسار مجاني للخدمات الخارجية، ورفع المقاطع الناتجة، مع مسار اختياري لتشغيل Wan 2.2 عبر ComfyUI على خادم GPU تملكه. لا توجد خدمة مدفوعة مفعّلة افتراضيًا.</p></div>
+      <section className="summary" style={{ marginTop: 28 }}>
+        <span className="eyebrow">03 / المونتاج والتصدير</span>
+        <h3>تجميع مشاهد الفيلم في ملف MP4 واحد</h3>
+        <p>سيجمع الاستوديو المقاطع التي أنتجتها أو رفعتها بترتيب المشاهد. يمكنك إضافة ملف تعليق صوتي أو موسيقى بصيغة MP3 أو WAV. تتم المعالجة داخل متصفحك باستخدام FFmpeg WebAssembly ولا تُرسل المقاطع إلى خدمة مونتاج مدفوعة.</p>
+        <p><strong>المقاطع الجاهزة:</strong> {board.scenes.filter(scene => !!scene.videoUrl).length} من {board.scenes.length}</p>
+        <label className="secondary uploadVideo" style={{ display: "inline-flex", margin: "8px 0" }}>إضافة تعليق صوتي أو موسيقى<input type="file" accept="audio/*" onChange={e => { const file = e.target.files?.[0]; if (file) attachSoundtrack(file); e.currentTarget.value = ""; }} /></label>
+        {soundtrackName && <p className="muted">الملف الصوتي المختار: {soundtrackName}</p>}
+        <div className="videoActions"><button className="primary" disabled={assemblyBusy || board.scenes.filter(scene => !!scene.videoUrl).length < 1} onClick={assembleFilm}>{assemblyBusy ? "جارٍ تجهيز الفيلم..." : "🎬 تجميع وتنزيل الفيلم MP4"}</button></div>
+        {assemblyStatus && <p className="muted" role="status">{assemblyStatus}</p>}
+        {finalFilmUrl && <div style={{ marginTop: 16 }}><video controls playsInline src={finalFilmUrl} className="generatedVideo" /><p><a className="primary" href={finalFilmUrl} download={(board.title || "alyanbo3-film").replace(/[^\\p{L}\\p{N}-]+/gu, "-") + ".mp4"}>تنزيل الفيلم النهائي MP4</a></p></div>}
+        <p className="muted">تنبيه: التصدير يحتاج ذاكرة متصفح ومساحة مؤقتة كافية. المقاطع الخارجية يجب أن تسمح بتنزيلها من المتصفح (CORS). عند رفض المصدر، نزّل المقطع من مزوده ثم ارفعه إلى المشهد. التصدير الحالي يضم الصوت المضاف كمسار واحد؛ لا ينشئ تعليقًا صوتيًا تلقائيًا.</p>
+      </section>
+      <div className="nextPhase"><b>المرحلة التالية: تحسين الصوت والانتقالات والعناوين</b><p>التجميع الأولي يعمل محليًا داخل المتصفح، دون خادم GPU أو خدمة مدفوعة. سيتم تطوير أدوات المونتاج تدريجيًا بعد اختبار التصدير.</p></div>
     </section>}
 
     <section className="pipeline"><span className="eyebrow">03 / خط الإنتاج</span><h2>من السيناريو إلى الفيلم النهائي</h2><div className="steps">{[["01","السيناريو","بناء القصة والحوار"],["02","الشخصيات","مرجع بصري موحد"],["03","المشاهد","صور ولقطات متحركة"],["04","الصوت","أداء عربي وموسيقى"],["05","المونتاج","تركيب وتصدير MP4"]].map(x => <div key={x[0]}><small>{x[0]}</small><b>{x[1]}</b><span>{x[2]}</span></div>)}</div></section>
