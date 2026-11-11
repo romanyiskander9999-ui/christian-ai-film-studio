@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string };
+type Scene = { number: number; title: string; duration: string; visual: string; camera: string; dialogue: string; narration: string; prompt: string; imagePrompt?: string; videoPrompt?: string; negativePrompt?: string; audioDesign?: string; videoTaskId?: string; videoStatus?: string; videoUrl?: string; videoError?: string };
 type Storyboard = { title: string; logline: string; synopsis: string; visualBible?: { world: string; palette: string; continuity: string; styleGuide: string }; characters: { name: string; description: string; visualPrompt?: string }[]; scenes: Scene[]; accuracyNotes: string[] };
 
 const samples = [
@@ -52,6 +52,35 @@ export default function Home() {
     const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `${board.title.replace(/[^\p{L}\p{N}-]+/gu, "-")}.txt`; a.click(); URL.revokeObjectURL(url);
+  }
+
+  async function generateSceneVideo(index: number) {
+    if (!board) return;
+    const scene = board.scenes[index];
+    const base = scene.videoPrompt || scene.prompt || scene.visual;
+    const prompt = (base + ". Maintain consistent character appearance, costume, historical setting and cinematic lighting. No subtitles, captions, logos or watermarks.").slice(0, 950);
+    setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "SUBMITTING", videoError: "", videoUrl: "" } : s) }) : prev);
+    try {
+      const response = await fetch("/api/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, duration: 5, ratio: "1280:720" }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "تعذر بدء توليد الفيديو.");
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoTaskId: data.taskId, videoStatus: data.status || "PENDING", videoError: "" } : s) }) : prev);
+    } catch (e) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "FAILED", videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
+    }
+  }
+
+  async function refreshSceneVideo(index: number) {
+    if (!board?.scenes[index]?.videoTaskId) return;
+    try {
+      const response = await fetch("/api/video/" + board.scenes[index].videoTaskId, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "تعذر تحديث حالة الفيديو.");
+      const output = typeof data.output === "string" ? data.output : data.output?.url || data.output?.uri || "";
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: data.status, videoUrl: output || s.videoUrl, videoError: data.failure ? String(data.failure) : "" } : s) }) : prev);
+    } catch (e) {
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
+    }
   }
 
   function clearSavedProject() {
@@ -115,6 +144,13 @@ export default function Home() {
           <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
           <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
           <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
+          <div className="videoMaker"><b>إنتاج لقطة الفيديو الفعلية</b><p>يتم إرسال وصف المشهد إلى Runway لتوليد مقطع مدته 5 ثوانٍ. كل طلب قد يستهلك رصيدًا مدفوعًا.</p>
+          <div className="videoActions"><button className="primary" onClick={() => generateSceneVideo(active)} disabled={["SUBMITTING","PENDING","RUNNING","THROTTLED"].includes(board.scenes[active].videoStatus || "")}>{board.scenes[active].videoTaskId ? "إعادة توليد اللقطة" : "✦ توليد فيديو لهذا المشهد"}</button>
+          {board.scenes[active].videoTaskId && <button className="secondary" onClick={() => refreshSceneVideo(active)}>تحديث حالة التوليد</button>}</div>
+          {board.scenes[active].videoStatus && <p className="muted">حالة المهمة: {board.scenes[active].videoStatus}</p>}
+          {board.scenes[active].videoError && <p className="error">{board.scenes[active].videoError}</p>}
+          {board.scenes[active].videoUrl && <video controls playsInline src={board.scenes[active].videoUrl} className="generatedVideo" />}
+          </div>
           <div className="sceneNav"><button disabled={active === 0} onClick={() => setActive(v => v - 1)}>السابق</button><button disabled={active === board.scenes.length - 1} onClick={() => setActive(v => v + 1)}>التالي</button></div>
         </article>}
       </div>
