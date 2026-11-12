@@ -67,7 +67,7 @@ export default function Home() {
     if (!board) return;
     const toSeconds = (value: string) => {
       const normalized = String(value || "").replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
-      const match = normalized.match(/[0-9]+(?:\\.[0-9]+)?/);
+      const match = normalized.match(/[0-9]+(?:\.[0-9]+)?/);
       const parsed = match ? Number(match[0]) : 10;
       return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
     };
@@ -82,10 +82,10 @@ export default function Home() {
     let cursor = 0;
     const cues: string[] = [];
     for (const scene of board.scenes) {
-      const text = [scene.narration, scene.dialogue].filter(Boolean).join("\\n");
+      const text = [scene.narration, scene.dialogue].filter(Boolean).join("\n");
       const length = toSeconds(scene.duration);
       if (text.trim()) {
-        cues.push(String(cues.length + 1) + "\\n" + stamp(cursor) + " --> " + stamp(cursor + length) + "\\n" + text.trim());
+        cues.push(String(cues.length + 1) + "\n" + stamp(cursor) + " --> " + stamp(cursor + length) + "\n" + text.trim());
       }
       cursor += length;
     }
@@ -93,11 +93,11 @@ export default function Home() {
       setError("لا توجد حوارات أو تعليقات صوتية في المشاهد لإنشاء ملف ترجمة.");
       return;
     }
-    const blob = new Blob(["\\uFEFF" + cues.join("\\n\\n")], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob(["\uFEFF" + cues.join("\n\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = (board.title || "alyanbo3-film").replace(/[^\\p{L}\\p{N}-]+/gu, "-") + ".srt";
+    a.download = (board.title || "alyanbo3-film").replace(/[^\p{L}\p{N}-]+/gu, "-") + ".srt";
     a.click();
     URL.revokeObjectURL(url);
   }
