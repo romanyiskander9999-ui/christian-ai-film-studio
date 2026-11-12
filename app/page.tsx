@@ -63,6 +63,45 @@ export default function Home() {
     } catch { setSavedAt("تعذر الحفظ على هذا الجهاز"); }
   }, [board, idea]);
 
+  function exportSubtitles() {
+    if (!board) return;
+    const toSeconds = (value: string) => {
+      const normalized = String(value || "").replace(/[٠-٩]/g, d => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+      const match = normalized.match(/[0-9]+(?:\\.[0-9]+)?/);
+      const parsed = match ? Number(match[0]) : 10;
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
+    };
+    const stamp = (seconds: number) => {
+      const ms = Math.max(0, Math.round(seconds * 1000));
+      const hours = Math.floor(ms / 3600000);
+      const minutes = Math.floor((ms % 3600000) / 60000);
+      const secs = Math.floor((ms % 60000) / 1000);
+      const millis = ms % 1000;
+      return [hours, minutes, secs].map(n => String(n).padStart(2, "0")).join(":") + "," + String(millis).padStart(3, "0");
+    };
+    let cursor = 0;
+    const cues: string[] = [];
+    for (const scene of board.scenes) {
+      const text = [scene.narration, scene.dialogue].filter(Boolean).join("\\n");
+      const length = toSeconds(scene.duration);
+      if (text.trim()) {
+        cues.push(String(cues.length + 1) + "\\n" + stamp(cursor) + " --> " + stamp(cursor + length) + "\\n" + text.trim());
+      }
+      cursor += length;
+    }
+    if (cues.length === 0) {
+      setError("لا توجد حوارات أو تعليقات صوتية في المشاهد لإنشاء ملف ترجمة.");
+      return;
+    }
+    const blob = new Blob(["\\uFEFF" + cues.join("\\n\\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (board.title || "alyanbo3-film").replace(/[^\\p{L}\\p{N}-]+/gu, "-") + ".srt";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function exportScript() {
     if (!board) return;
     const lines = [board.title, "", board.logline, "", "ملخص الفيلم", board.synopsis, "", "الدليل البصري الموحد", board.visualBible?.world || "", board.visualBible?.palette || "", board.visualBible?.continuity || "", board.visualBible?.styleGuide || "", "", "الشخصيات", ...(board.characters || []).flatMap(c => [`${c.name}: ${c.description}`, `مرجع الشخصية: ${c.visualPrompt || ""}`]), "", "المشاهد", ...(board.scenes || []).flatMap(s => [`\nالمشهد ${s.number}: ${s.title} (${s.duration})`, `الصورة: ${s.visual}`, `الكاميرا: ${s.camera}`, `الحوار: ${s.dialogue}`, `التعليق الصوتي: ${s.narration}`, `وصف الصورة: ${s.imagePrompt || s.prompt}`, `وصف الفيديو: ${s.videoPrompt || s.prompt}`, `المؤثرات الصوتية: ${s.audioDesign || ""}`, `المستبعدات: ${s.negativePrompt || ""}`]), "", "ملاحظات التوثيق", ...(board.accuracyNotes || []).map(n => `- ${n}`)];
@@ -407,7 +446,7 @@ export default function Home() {
     </section>
 
     {board && <section className="panel results">
-      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
+      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={exportSubtitles}>تنزيل الترجمة SRT</button><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
       <div className="summary"><b>ملخص الفيلم</b><p>{board.synopsis}</p></div>
       {board.visualBible && <div className="summary"><b>الدليل البصري الموحد للفيلم</b><p><strong>العالم والحقبة:</strong> {board.visualBible.world}</p><p><strong>الألوان والإضاءة:</strong> {board.visualBible.palette}</p><p><strong>قواعد الاستمرارية:</strong> {board.visualBible.continuity}</p><p><strong>التوجيه الفني:</strong> {board.visualBible.styleGuide}</p></div>}<h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p>{c.visualPrompt && <div className="prompt">{c.visualPrompt}</div>}</article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
