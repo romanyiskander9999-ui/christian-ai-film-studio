@@ -281,6 +281,44 @@ export default function Home() {
     setFinalFilmUrl("");
   }
 
+  function exportProjectJson() {
+    if (!board) return;
+    const project = {
+      format: "alyanbo3-film-project",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      idea,
+      board
+    };
+    const blob = new Blob(["\\uFEFF" + JSON.stringify(project, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = (board.title || "alyanbo3-film-project").replace(/[^\\p{L}\\p{N}-]+/gu, "-") + ".json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importProjectJson(file: File) {
+    try {
+      const raw = await file.text();
+      const parsed = JSON.parse(raw.replace(/^\\uFEFF/, ""));
+      const importedBoard = parsed?.board || parsed;
+      if (!importedBoard?.title || !Array.isArray(importedBoard.scenes) || importedBoard.scenes.length === 0) {
+        throw new Error("الملف لا يحتوي على مشروع صالح أو قائمة مشاهد.");
+      }
+      setBoard(importedBoard);
+      setIdea(typeof parsed.idea === "string" ? parsed.idea : "");
+      setActive(0);
+      setError("");
+      setFinalFilmUrl("");
+      setAssemblyStatus("تم استيراد المشروع. ستُحفظ بياناته تلقائيًا على هذا الجهاز.");
+      setSavedAt("تم الاستيراد للتو");
+    } catch (e) {
+      setError(e instanceof Error ? "تعذر استيراد المشروع: " + e.message : "تعذر قراءة ملف المشروع.");
+    }
+  }
+
   function clearSavedProject() {
     if (!confirm("هل تريد حذف المشروع المحفوظ من هذا الجهاز؟")) return;
     localStorage.removeItem("alyanbo3-film-studio-project"); setBoard(null); setIdea(""); setSavedAt("");
@@ -446,7 +484,7 @@ export default function Home() {
     </section>
 
     {board && <section className="panel results">
-      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={exportSubtitles}>تنزيل الترجمة SRT</button><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
+      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={exportSubtitles}>تنزيل الترجمة SRT</button><button className="secondary" onClick={exportProjectJson}>تصدير المشروع كاملًا JSON</button><label className="secondary uploadVideo">استيراد مشروع JSON<input type="file" accept=".json,application/json" onChange={e => { const file = e.target.files?.[0]; if (file) void importProjectJson(file); e.currentTarget.value = ""; }} /></label><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
       <div className="summary"><b>ملخص الفيلم</b><p>{board.synopsis}</p></div>
       {board.visualBible && <div className="summary"><b>الدليل البصري الموحد للفيلم</b><p><strong>العالم والحقبة:</strong> {board.visualBible.world}</p><p><strong>الألوان والإضاءة:</strong> {board.visualBible.palette}</p><p><strong>قواعد الاستمرارية:</strong> {board.visualBible.continuity}</p><p><strong>التوجيه الفني:</strong> {board.visualBible.styleGuide}</p></div>}<h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p>{c.visualPrompt && <div className="prompt">{c.visualPrompt}</div>}</article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
