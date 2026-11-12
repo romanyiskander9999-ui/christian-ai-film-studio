@@ -31,6 +31,7 @@ export default function Home() {
   const [assemblyBusy, setAssemblyBusy] = useState(false);
   const [soundtrackUrl, setSoundtrackUrl] = useState("");
   const [soundtrackName, setSoundtrackName] = useState("");
+  const [soundtrackVolume, setSoundtrackVolume] = useState(0.8);
   const [finalFilmUrl, setFinalFilmUrl] = useState("");
 
   useEffect(() => {
@@ -191,7 +192,7 @@ export default function Home() {
         const audioResponse = await fetch(soundtrackUrl);
         if (!audioResponse.ok) throw new Error("تعذر قراءة الملف الصوتي المرفوع.");
         await ffmpeg.writeFile("soundtrack.bin", await fetchFile(await audioResponse.blob()));
-        const result = await ffmpeg.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-stream_loop", "-1", "-i", "soundtrack.bin", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", output]);
+        const result = await ffmpeg.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-stream_loop", "-1", "-i", "soundtrack.bin", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-af", `volume=${soundtrackVolume},afade=t=in:st=0:d=1`, "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", output]);
         if (result !== 0) throw new Error("تعذر دمج الملف الصوتي. جرّب ملف MP3 أو WAV.");
       } else {
         const result = await ffmpeg.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c:v", "copy", "-an", "-movflags", "+faststart", output]);
@@ -422,7 +423,7 @@ export default function Home() {
         <p>سيجمع الاستوديو المقاطع التي أنتجتها أو رفعتها بترتيب المشاهد. يمكنك إضافة ملف تعليق صوتي أو موسيقى بصيغة MP3 أو WAV. تتم المعالجة داخل متصفحك باستخدام FFmpeg WebAssembly ولا تُرسل المقاطع إلى خدمة مونتاج مدفوعة.</p>
         <p><strong>المقاطع الجاهزة:</strong> {board.scenes.filter(scene => !!scene.videoUrl).length} من {board.scenes.length}</p>
         <label className="secondary uploadVideo" style={{ display: "inline-flex", margin: "8px 0" }}>إضافة تعليق صوتي أو موسيقى<input type="file" accept="audio/*" onChange={e => { const file = e.target.files?.[0]; if (file) attachSoundtrack(file); e.currentTarget.value = ""; }} /></label>
-        {soundtrackName && <p className="muted">الملف الصوتي المختار: {soundtrackName}</p>}
+        {soundtrackName && <div className="summary"><p>الملف الصوتي المختار: {soundtrackName}</p><label className="field" style={{ maxWidth: 420 }}>مستوى صوت الموسيقى أو التعليق: {Math.round(soundtrackVolume * 100)}%<input type="range" min="0" max="1" step="0.05" value={soundtrackVolume} onChange={e => setSoundtrackVolume(Number(e.target.value))} /></label><button type="button" className="secondary" onClick={() => { if (soundtrackUrl) URL.revokeObjectURL(soundtrackUrl); setSoundtrackUrl(""); setSoundtrackName(""); setFinalFilmUrl(""); }}>إزالة الملف الصوتي</button></div>}
         <div className="videoActions"><button className="primary" disabled={assemblyBusy || board.scenes.filter(scene => !!scene.videoUrl).length < 1} onClick={assembleFilm}>{assemblyBusy ? "جارٍ تجهيز الفيلم..." : "🎬 تجميع وتنزيل الفيلم MP4"}</button></div>
         {assemblyStatus && <p className="muted" role="status">{assemblyStatus}</p>}
         {finalFilmUrl && <div style={{ marginTop: 16 }}><video controls playsInline src={finalFilmUrl} className="generatedVideo" /><p><a className="primary" href={finalFilmUrl} download={(board.title || "alyanbo3-film").replace(/[^\p{L}\p{N}-]+/gu, "-") + ".mp4"}>تنزيل الفيلم النهائي MP4</a></p></div>}
