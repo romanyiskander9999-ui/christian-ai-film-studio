@@ -33,21 +33,21 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 45000);
     let response: Response;
+    let streamText = "";
     try {
       response = await fetch(`${SPACE}/gradio_api/call/generate_video/${encodeURIComponent(id)}`, {
         headers: { Accept: "text/event-stream" },
         cache: "no-store",
         signal: controller.signal
       });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        return NextResponse.json({ error: detail || "تعذر قراءة حالة المهمة من Hugging Face." }, { status: response.status });
+      }
+      streamText = await response.text();
     } finally {
       clearTimeout(timeout);
     }
-    if (!response.ok) {
-      const detail = await response.text().catch(() => "");
-      return NextResponse.json({ error: detail || "تعذر قراءة حالة المهمة من Hugging Face." }, { status: response.status });
-    }
-
-    const streamText = await response.text();
     const dataLines = streamText.split(/\r?\n/).filter(line => line.startsWith("data:")).map(line => line.slice(5).trim());
     for (const line of dataLines.reverse()) {
       if (!line || line === "[DONE]") continue;
