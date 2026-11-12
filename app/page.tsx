@@ -57,8 +57,9 @@ export default function Home() {
   useEffect(() => {
     if (!board) return;
     const stamp = new Date().toLocaleString("ar-EG");
+    const portableBoard = makePortableBoard(board);
     try {
-      localStorage.setItem("alyanbo3-film-studio-project", JSON.stringify({ board, idea, savedAt: stamp }));
+      localStorage.setItem("alyanbo3-film-studio-project", JSON.stringify({ board: portableBoard, idea, savedAt: stamp }));
       setSavedAt(stamp);
     } catch { setSavedAt("تعذر الحفظ على هذا الجهاز"); }
   }, [board, idea]);
@@ -281,6 +282,15 @@ export default function Home() {
     setFinalFilmUrl("");
   }
 
+  function makePortableBoard(source: Storyboard): Storyboard {
+    return {
+      ...source,
+      scenes: source.scenes.map(scene => scene.videoUrl?.startsWith("blob:")
+        ? { ...scene, videoUrl: undefined, videoStatus: "NEEDS_REUPLOAD" }
+        : scene)
+    };
+  }
+
   function exportProjectJson() {
     if (!board) return;
     const project = {
@@ -288,7 +298,7 @@ export default function Home() {
       version: 1,
       exportedAt: new Date().toISOString(),
       idea,
-      board
+      board: makePortableBoard(board)
     };
     const blob = new Blob(["\\uFEFF" + JSON.stringify(project, null, 2)], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -307,7 +317,7 @@ export default function Home() {
       if (!importedBoard?.title || !Array.isArray(importedBoard.scenes) || importedBoard.scenes.length === 0) {
         throw new Error("الملف لا يحتوي على مشروع صالح أو قائمة مشاهد.");
       }
-      setBoard(importedBoard);
+      setBoard(makePortableBoard(importedBoard));
       setIdea(typeof parsed.idea === "string" ? parsed.idea : "");
       setActive(0);
       setError("");
@@ -507,7 +517,7 @@ export default function Home() {
           <div className="videoActions"><button className="primary" onClick={() => copyScenePrompt(active)}>نسخ وصف الفيديو والمستبعدات</button>
           <label className="secondary uploadVideo">رفع المقطع الناتج<input type="file" accept="video/*" onChange={e => { const f = e.target.files?.[0]; if (f) attachSceneVideo(active, f); e.currentTarget.value = ""; }} /></label></div>
           <div className="localModel"><b>الخيار المفتوح المصدر: ComfyUI + Wan 2.2</b><p>شغّل ComfyUI على جهاز GPU أو خادم خاص، وجهّز Workflow بصيغة API، ثم اضبط متغيرات البيئة المذكورة في دليل المشروع. لن تُفرض رسوم مزود فيديو خارجي.</p><div className="videoActions"><button className="secondary" onClick={() => generateLocalVideo(active)}>إرسال المشهد إلى Wan 2.2</button>{board.scenes[active].videoProvider === "comfyui" && board.scenes[active].videoTaskId && <button className="secondary" onClick={() => refreshLocalVideo(active)}>تحديث حالة Wan 2.2</button>}</div><a href="https://github.com/Wan-Video/Wan2.2" target="_blank" rel="noreferrer">مستودع Wan 2.2 ↗</a> · <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer">ComfyUI ↗</a></div>
-          {board.scenes[active].videoFileName && <p className="muted">المقطع المرفوع: {board.scenes[active].videoFileName} — متاح في جلسة المتصفح الحالية.</p>}
+          {board.scenes[active].videoFileName && <p className="muted">{board.scenes[active].videoUrl ? "المقطع المرفوع: " + board.scenes[active].videoFileName + " — متاح في جلسة المتصفح الحالية." : "كان هذا المشهد يستخدم الملف: " + board.scenes[active].videoFileName + ". أعد رفع الفيديو بعد استيراد المشروع؛ ملفات الفيديو لا تُضمَّن داخل ملف JSON."}</p>}
           {board.scenes[active].videoError && <p className="error">{board.scenes[active].videoError}</p>}
           {board.scenes[active].videoUrl && <video controls playsInline src={board.scenes[active].videoUrl} className="generatedVideo" />}
           </div>
