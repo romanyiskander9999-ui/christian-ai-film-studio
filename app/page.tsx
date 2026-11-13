@@ -33,6 +33,7 @@ export default function Home() {
   const [soundtrackName, setSoundtrackName] = useState("");
   const [soundtrackVolume, setSoundtrackVolume] = useState(0.8);
   const [finalFilmUrl, setFinalFilmUrl] = useState("");
+  const [speaking, setSpeaking] = useState(false);
 
   useEffect(() => {
     try {
@@ -63,6 +64,33 @@ export default function Home() {
       setSavedAt(stamp);
     } catch { setSavedAt("تعذر الحفظ على هذا الجهاز"); }
   }, [board, idea]);
+
+  function speakScene(index: number) {
+    if (!board || typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setError("ميزة النطق غير متاحة في هذا المتصفح. جرّب Chrome أو Edge.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const scene = board.scenes[index];
+    const text = [scene.narration, scene.dialogue].filter(Boolean).join(". ").trim();
+    if (!text) { setError("لا يوجد تعليق صوتي أو حوار في هذا المشهد."); return; }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "ar-EG";
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const arabicVoice = voices.find(voice => voice.lang.toLowerCase().startsWith("ar-eg")) || voices.find(voice => voice.lang.toLowerCase().startsWith("ar"));
+    if (arabicVoice) utterance.voice = arabicVoice;
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopSceneSpeech() {
+    if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    setSpeaking(false);
+  }
 
   function exportSubtitles() {
     if (!board) return;
@@ -418,30 +446,48 @@ export default function Home() {
       }
       if (streamError) throw new Error("خطأ Ollama: " + streamError);
       if (!output.trim()) throw new Error("لم يُرجع النموذج نتيجة في مرحلة: " + stage);
-      try { return JSON.parse(output); }
-      catch {
-        if (stage === "إعداد ملخص الفيلم") {
-          const repaired = await fetch(base + "/api/chat", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model, stream: false, format: "json",
-              messages: [
-                { role: "system", content: "أخرج JSON صالحًا ومكتملًا فقط بالمفاتيح title,logline,synopsis,characters. characters عنصران كحد أقصى وكل عنصر name وdescription. اختصر بشدة." },
-                { role: "user", content: "أنشئ ملخصًا جديدًا مكتملًا وقصيرًا لهذه الفكرة: " + idea.slice(0, 500) }
-              ],
-              options: { temperature: 0.1, num_ctx: 768, num_predict: 180, num_batch: 8 },
-              keep_alive: "15m"
-            }),
-            signal: AbortSignal.timeout(300000), cache: "no-store"
-          });
-          if (repaired.ok) {
-            const payload = await repaired.json();
-            const content = payload.message?.content;
-            if (typeof content === "string") { try { return JSON.parse(content); } catch {} }
+      const parseObject = (value: string) => {
+        try { return JSON.parse(value); } catch {}
+        const start = value.indexOf("{");
+        const end = value.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          try { return JSON.parse(value.slice(start, end + 1)); } catch {}
+        }
+        return null;
+      };
+      const parsed = parseObject(output);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+
+      // إصلاح تلقائي قصير لكل مرحلة، وبالأخص المشاهد التي قد تنقطع عند حد الرموز.
+      const isScene = stage.startsWith("كتابة المشهد");
+      const repairSystem = isScene
+        ? "أنت تصلح JSON. أخرج كائن JSON واحدًا صالحًا ومكتملًا فقط بهذه المفاتيح: number,title,duration,visual,camera,dialogue,narration,imagePrompt,videoPrompt,negativePrompt,audioDesign. اجعل كل قيمة قصيرة جدًا. imagePrompt وvideoPrompt جملة إنجليزية قصيرة. لا تستخدم Markdown ولا تكتب أي شرح."
+        : "أخرج JSON صالحًا ومكتملًا فقط بالمفاتيح title,logline,synopsis,characters. characters عنصران كحد أقصى وكل عنصر name وdescription. اختصر بشدة.";
+      const repairUser = isScene
+        ? "أعد بناء مشهد مكتمل اعتمادًا على الطلب والجزء غير المكتمل. الطلب: " + user.slice(0, 1100) + "\nالجزء الناتج: " + output.slice(0, 1400)
+        : "أنشئ ملخصًا جديدًا مكتملًا وقصيرًا لهذه الفكرة: " + idea.slice(0, 500);
+      try {
+        setGenerationStatus(stage + " — إصلاح تلقائي للاستجابة غير المكتملة...");
+        const repaired = await fetch(base + "/api/chat", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model, stream: false, format: "json",
+            messages: [{ role: "system", content: repairSystem }, { role: "user", content: repairUser }],
+            options: { temperature: 0.1, num_ctx: 1024, num_predict: isScene ? 300 : 220, num_batch: 8 },
+            keep_alive: "15m"
+          }),
+          signal: AbortSignal.timeout(240000), cache: "no-store"
+        });
+        if (repaired.ok) {
+          const payload = await repaired.json();
+          const content = payload.message?.content;
+          if (typeof content === "string") {
+            const fixed = parseObject(content);
+            if (fixed && typeof fixed === "object" && !Array.isArray(fixed)) return fixed;
           }
         }
-        throw new Error("النموذج أرسل JSON غير مكتمل في مرحلة: " + stage + ". حاول مرة أخرى؛ لم تُحذف بيانات المشروع.");
-      }
+      } catch {}
+      throw new Error("تعذر إكمال JSON في مرحلة: " + stage + ". أُبقيت المراحل المكتملة كما هي؛ اضغط إنشاء السيناريو مرة أخرى لاستكمال المشهد الناقص.");
     }
 
     try {
@@ -475,7 +521,7 @@ export default function Home() {
         const scene = await askJson(
           "أنت كاتب مشاهد سينمائية. أخرج كائن JSON واحدًا فقط بمفاتيح number,title,duration,visual,camera,dialogue,narration,imagePrompt,videoPrompt,negativePrompt,audioDesign. اكتب مشهدًا واحدًا فقط، موجزًا جدًا. imagePrompt وvideoPrompt بالإنجليزية، جملة واحدة لكل منهما. لا تضف حقائق غير موجودة في المصدر.",
           "القصة: " + idea.slice(0, 900) + "\nعنوان الفيلم: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 350) + "\nالشخصيات: " + initial.characters.map(c => c.name + ": " + c.description.slice(0, 100)).join("؛ ") + "\nالمشاهد السابقة: " + initial.scenes.map(s => s.title).join("، ") + "\nهذا المشهد رقم " + (i + 1) + " من " + count + ". " + (i === 0 ? "ابدأ بتقديم المكان والشخصيات." : i === count - 1 ? "اختم القصة بخاتمة واضحة." : "طوّر الحدث دون تكرار المشاهد السابقة.") + " اجعل المدة 10-15 ثانية واكتب بإيجاز شديد.",
-          180, "كتابة المشهد " + (i + 1)
+          280, "كتابة المشهد " + (i + 1)
         );
         const normalized: Scene = {
           number: i + 1, title: String(scene.title || "المشهد " + (i + 1)),
@@ -549,7 +595,7 @@ export default function Home() {
       {board.visualBible && <div className="summary"><b>الدليل البصري الموحد للفيلم</b><p><strong>العالم والحقبة:</strong> {board.visualBible.world}</p><p><strong>الألوان والإضاءة:</strong> {board.visualBible.palette}</p><p><strong>قواعد الاستمرارية:</strong> {board.visualBible.continuity}</p><p><strong>التوجيه الفني:</strong> {board.visualBible.styleGuide}</p></div>}<h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p>{c.visualPrompt && <div className="prompt">{c.visualPrompt}</div>}</article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
         {board.scenes?.[active] && <article className="sceneDetail"><span className="eyebrow">SCENE {String(active + 1).padStart(2, "0")}</span><h3>{board.scenes[active].title}</h3><small>{board.scenes[active].duration}</small>
-          <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
+          <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><div className="videoActions"><button type="button" className="secondary" onClick={() => speakScene(active)}>🔊 استمع للتعليق والحوار بالعربية</button><button type="button" className="secondary" onClick={stopSceneSpeech} disabled={!speaking}>إيقاف الصوت</button></div><p className="muted">النطق مجاني من أصوات العربية المثبتة في المتصفح. جودة الصوت وتوفر اللهجة يعتمدان على جهازك؛ هذه معاينة صوتية وليست ملف MP3 قابلًا للتنزيل.</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
           <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
           <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
           <div className="videoMaker"><b>توليد الفيديو السحابي — Wan 2.2</b>
