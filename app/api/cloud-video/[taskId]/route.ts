@@ -41,7 +41,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
     const response = await fetch(`${SPACE}/gradio_api/call/generate_video/${encodeURIComponent(taskId)}`, {
       headers: { Accept: "text/event-stream" },
       cache: "no-store",
-      signal: AbortSignal.timeout(50000)
+      signal: AbortSignal.timeout(12000)
     });
     const body = await response.text();
     if (!response.ok) {
