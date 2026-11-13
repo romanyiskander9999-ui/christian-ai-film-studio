@@ -8,7 +8,8 @@ const SPACE = "https://mastap-wan22-remix-sfw-t2v.hf.space";
 function findVideo(value: unknown): string {
   if (!value) return "";
   if (typeof value === "string") {
-    if (/^https?:\/\//i.test(value) && /\.(mp4|webm|mov)(\?|$)/i.test(value)) return value;
+    if (/^https?:\/\//i.test(value)) return value;
+    if (/^(\/|gradio_api\/)/i.test(value)) return new URL(value, SPACE).toString();
     return "";
   }
   if (Array.isArray(value)) {
@@ -17,7 +18,10 @@ function findVideo(value: unknown): string {
   }
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
-    if (typeof obj.url === "string" && /^https?:\/\//i.test(obj.url)) return obj.url;
+    for (const key of ["url", "video", "path"]) {
+      const found = findVideo(obj[key]);
+      if (found) return found;
+    }
     for (const item of Object.values(obj)) { const found = findVideo(item); if (found) return found; }
   }
   return "";
@@ -31,7 +35,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    const timeout = setTimeout(() => controller.abort(), 12000);
     let response: Response;
     let streamText = "";
     try {
@@ -57,7 +61,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
         const videoUrl = findVideo(payload);
         if (videoUrl) return NextResponse.json({ taskId: id, status: "COMPLETED", videoUrl });
         if (Array.isArray(payload) && payload.length) {
-          return NextResponse.json({ taskId: id, status: "COMPLETED", result: payload, message: "اكتمل التوليد، لكن تعذر استخراج رابط الفيديو تلقائيًا. افتح المساحة لعرض النتيجة." });
+          return NextResponse.json({ taskId: id, status: "COMPLETED", result: payload, error: "اكتمل التوليد لكن لم يُرجع المحرك رابط فيديو قابلًا للعرض تلقائيًا. افتح مساحة Hugging Face لعرض النتيجة." });
         }
       } catch { /* Ignore status/heartbeat frames that are not JSON. */ }
     }
