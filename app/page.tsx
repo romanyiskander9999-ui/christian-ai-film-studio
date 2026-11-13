@@ -360,9 +360,11 @@ export default function Home() {
 
   async function generate() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
-    setLoading(true); setError(""); setBoard(null); setActive(0);
+    setLoading(true); setError(""); setActive(0);
+    const existingBoard = board;
     const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
     const model = ollamaModel.trim() || "qwen2.5:1.5b";
+    const count = duration === "60-90 ثانية" ? 3 : duration === "2-3 دقائق" ? 4 : 5;
 
     // كل طلب صغير ومستقل؛ نحفظ النتيجة بعد كل مرحلة حتى لا نفقد العمل كله.
     async function askJson(system: string, user: string, tokenLimit: number, stage: string) {
@@ -421,28 +423,37 @@ export default function Home() {
     }
 
     try {
-      setGenerationStatus("المرحلة 1 من 4: إعداد عنوان الفيلم وملخصه...");
-      const meta = await askJson(
-        "أنت كاتب سيناريو مسيحي. أخرج JSON قصيرًا وصالحًا فقط بالمفاتيح title,logline,synopsis,characters. characters مصفوفة من عنصرين كحد أقصى، وكل عنصر name,description,visualPrompt. لا تكتب مشاهد أو مقدمات. التزم بالنص الكتابي ولا تخترع مراجع.",
-        "الفكرة: " + idea.slice(0, 1800) + "\nالطابع: " + style + "\nالجمهور: " + audience + "\nالمرجع: " + reference + "\nاكتب عنوانًا وملخصًا موجزًا وشخصيتين كحد أقصى.",
-        220, "إعداد ملخص الفيلم"
-      );
-      const initial: Storyboard = {
-        title: String(meta.title || "فيلم الينبوع"),
-        logline: String(meta.logline || ""),
-        synopsis: String(meta.synopsis || ""),
-        visualBible: { world: style, palette: "", continuity: "حافظ على ثبات ملامح الشخصيات بين المشاهد.", styleGuide: style },
-        characters: Array.isArray(meta.characters) ? meta.characters.slice(0, 3) : [],
-        scenes: [], accuracyNotes: ["راجع النص والمراجع الكتابية قبل اعتماد السيناريو النهائي."]
-      };
-      setBoard(initial);
-      const count = duration === "60-90 ثانية" ? 3 : duration === "2-3 دقائق" ? 4 : 5;
-      for (let i = 0; i < count; i++) {
+      let initial: Storyboard;
+      if (existingBoard) {
+        initial = existingBoard;
+        setGenerationStatus("استكمال المشروع المحفوظ: تم إنجاز " + initial.scenes.length + " من " + count + " مشاهد...");
+      } else {
+        setGenerationStatus("المرحلة 1 من 4: إعداد عنوان الفيلم وملخصه...");
+        const meta = await askJson(
+          "أنت كاتب سيناريو مسيحي. أخرج JSON قصيرًا وصالحًا فقط بالمفاتيح title,logline,synopsis,characters. characters مصفوفة من عنصرين كحد أقصى، وكل عنصر name,description,visualPrompt. لا تكتب مشاهد أو مقدمات. التزم بالنص الكتابي ولا تخترع مراجع.",
+          "الفكرة: " + idea.slice(0, 1800) + "\nالطابع: " + style + "\nالجمهور: " + audience + "\nالمرجع: " + reference + "\nاكتب عنوانًا وملخصًا موجزًا وشخصيتين كحد أقصى.",
+          180, "إعداد ملخص الفيلم"
+        );
+        initial = {
+          title: String(meta.title || "فيلم الينبوع"),
+          logline: String(meta.logline || ""),
+          synopsis: String(meta.synopsis || ""),
+          visualBible: { world: style, palette: "", continuity: "حافظ على ثبات ملامح الشخصيات بين المشاهد.", styleGuide: style },
+          characters: Array.isArray(meta.characters) ? meta.characters.slice(0, 3) : [],
+          scenes: [], accuracyNotes: ["راجع النص والمراجع الكتابية قبل اعتماد السيناريو النهائي."]
+        };
+        setBoard(initial);
+      }
+      if (initial.scenes.length >= count) {
+        setGenerationStatus("المشاهد المطلوبة مكتملة بالفعل. يمكنك مراجعة السيناريو.");
+        return;
+      }
+      for (let i = initial.scenes.length; i < count; i++) {
         setGenerationStatus("المرحلة " + (i + 2) + " من " + (count + 1) + ": كتابة المشهد " + (i + 1) + " من " + count + "...");
         const scene = await askJson(
           "أنت كاتب مشاهد سينمائية. أخرج كائن JSON واحدًا فقط بمفاتيح number,title,duration,visual,camera,dialogue,narration,imagePrompt,videoPrompt,negativePrompt,audioDesign. اكتب مشهدًا واحدًا فقط، موجزًا جدًا. imagePrompt وvideoPrompt بالإنجليزية، جملة واحدة لكل منهما. لا تضف حقائق غير موجودة في المصدر.",
-          "القصة: " + idea.slice(0, 1200) + "\nعنوان الفيلم: " + initial.title + "\nملخص: " + initial.synopsis + "\nالشخصيات: " + initial.characters.map(c => c.name + ": " + c.description).join("؛ ") + "\nهذا المشهد رقم " + (i + 1) + " من " + count + ". " + (i === 0 ? "ابدأ بتقديم المكان والشخصيات." : i === count - 1 ? "اختم القصة بخاتمة واضحة." : "طوّر الحدث دون تكرار المشاهد السابقة.") + " اجعل المدة 15-20 ثانية.",
-          260, "كتابة المشهد " + (i + 1)
+          "القصة: " + idea.slice(0, 900) + "\nعنوان الفيلم: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 350) + "\nالشخصيات: " + initial.characters.map(c => c.name + ": " + c.description.slice(0, 100)).join("؛ ") + "\nالمشاهد السابقة: " + initial.scenes.map(s => s.title).join("، ") + "\nهذا المشهد رقم " + (i + 1) + " من " + count + ". " + (i === 0 ? "ابدأ بتقديم المكان والشخصيات." : i === count - 1 ? "اختم القصة بخاتمة واضحة." : "طوّر الحدث دون تكرار المشاهد السابقة.") + " اجعل المدة 10-15 ثانية واكتب بإيجاز شديد.",
+          180, "كتابة المشهد " + (i + 1)
         );
         const normalized: Scene = {
           number: i + 1, title: String(scene.title || "المشهد " + (i + 1)),
