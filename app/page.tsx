@@ -374,10 +374,10 @@ export default function Home() {
         body: JSON.stringify({
           model, stream: true, format: "json",
           messages: [{ role: "system", content: system }, { role: "user", content: user }],
-          options: { temperature: 0.2, num_ctx: 1024, num_predict: tokenLimit, num_batch: 32 },
-          keep_alive: "10m"
+          options: { temperature: 0.2, num_ctx: 768, num_predict: tokenLimit, num_batch: 8 },
+          keep_alive: "15m"
         }),
-        signal: AbortSignal.timeout(240000),
+        signal: AbortSignal.timeout(600000),
         cache: "no-store"
       });
       if (!response.ok) {
@@ -429,10 +429,10 @@ export default function Home() {
                 { role: "system", content: "أخرج JSON صالحًا ومكتملًا فقط بالمفاتيح title,logline,synopsis,characters. characters عنصران كحد أقصى وكل عنصر name وdescription. اختصر بشدة." },
                 { role: "user", content: "أنشئ ملخصًا جديدًا مكتملًا وقصيرًا لهذه الفكرة: " + idea.slice(0, 500) }
               ],
-              options: { temperature: 0.1, num_ctx: 1024, num_predict: 260, num_batch: 32 },
-              keep_alive: "10m"
+              options: { temperature: 0.1, num_ctx: 768, num_predict: 180, num_batch: 8 },
+              keep_alive: "15m"
             }),
-            signal: AbortSignal.timeout(240000), cache: "no-store"
+            signal: AbortSignal.timeout(300000), cache: "no-store"
           });
           if (repaired.ok) {
             const payload = await repaired.json();
