@@ -461,7 +461,7 @@ export default function Home() {
       // إصلاح تلقائي قصير لكل مرحلة، وبالأخص المشاهد التي قد تنقطع عند حد الرموز.
       const isScene = stage.startsWith("كتابة المشهد");
       const repairSystem = isScene
-        ? "أنت تصلح JSON. أخرج كائن JSON واحدًا صالحًا ومكتملًا فقط بهذه المفاتيح: number,title,duration,visual,camera,dialogue,narration,imagePrompt,videoPrompt,negativePrompt,audioDesign. اجعل كل قيمة قصيرة جدًا. imagePrompt وvideoPrompt جملة إنجليزية قصيرة. لا تستخدم Markdown ولا تكتب أي شرح."
+        ? "أنت تصلح JSON. أخرج كائنًا صالحًا ومكتملًا بهذه المفاتيح الستة فقط: number,title,visual,narration,imagePrompt,videoPrompt. اجعل القيم قصيرة جدًا، وimagePrompt وvideoPrompt جملة إنجليزية قصيرة. لا تضف شرحًا."
         : "أخرج JSON صالحًا ومكتملًا فقط بالمفاتيح title,logline,synopsis,characters. characters عنصران كحد أقصى وكل عنصر name وdescription. اختصر بشدة.";
       const repairUser = isScene
         ? "أعد بناء مشهد مكتمل اعتمادًا على الطلب والجزء غير المكتمل. الطلب: " + user.slice(0, 1100) + "\nالجزء الناتج: " + output.slice(0, 1400)
@@ -473,7 +473,7 @@ export default function Home() {
           body: JSON.stringify({
             model, stream: false, format: "json",
             messages: [{ role: "system", content: repairSystem }, { role: "user", content: repairUser }],
-            options: { temperature: 0.1, num_ctx: 1024, num_predict: isScene ? 300 : 220, num_batch: 8 },
+            options: { temperature: 0.1, num_ctx: 1024, num_predict: isScene ? 180 : 220, num_batch: 8 },
             keep_alive: "15m"
           }),
           signal: AbortSignal.timeout(240000), cache: "no-store"
@@ -518,11 +518,32 @@ export default function Home() {
       }
       for (let i = initial.scenes.length; i < count; i++) {
         setGenerationStatus("المرحلة " + (i + 2) + " من " + (count + 1) + ": كتابة المشهد " + (i + 1) + " من " + count + "...");
-        const scene = await askJson(
-          "أنت كاتب مشاهد سينمائية. أخرج كائن JSON واحدًا فقط بمفاتيح number,title,duration,visual,camera,dialogue,narration,imagePrompt,videoPrompt,negativePrompt,audioDesign. اكتب مشهدًا واحدًا فقط، موجزًا جدًا. imagePrompt وvideoPrompt بالإنجليزية، جملة واحدة لكل منهما. لا تضف حقائق غير موجودة في المصدر.",
-          "القصة: " + idea.slice(0, 900) + "\nعنوان الفيلم: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 350) + "\nالشخصيات: " + initial.characters.map(c => c.name + ": " + c.description.slice(0, 100)).join("؛ ") + "\nالمشاهد السابقة: " + initial.scenes.map(s => s.title).join("، ") + "\nهذا المشهد رقم " + (i + 1) + " من " + count + ". " + (i === 0 ? "ابدأ بتقديم المكان والشخصيات." : i === count - 1 ? "اختم القصة بخاتمة واضحة." : "طوّر الحدث دون تكرار المشاهد السابقة.") + " اجعل المدة 10-15 ثانية واكتب بإيجاز شديد.",
-          280, "كتابة المشهد " + (i + 1)
-        );
+        let scene: Record<string, unknown>;
+        try {
+          scene = await askJson(
+            "أخرج JSON فقط بستة مفاتيح: number,title,visual,narration,imagePrompt,videoPrompt. اكتب جملًا قصيرة جدًا. imagePrompt وvideoPrompt بالإنجليزية. لا تضف شرحًا.",
+            "القصة: " + idea.slice(0, 450) + "\nالعنوان: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 180) + "\nالمشهد " + (i + 1) + " من " + count + ". " + (i === 0 ? "قدّم المكان والشخصيات." : i === count - 1 ? "اكتب خاتمة واضحة." : "طوّر الحدث.") + " أعد ستة حقول قصيرة فقط.",
+            220, "كتابة المشهد " + (i + 1)
+          );
+        } catch {
+          // لا نوقف الفيلم بسبب النموذج الصغير: أنشئ مسودة مشهد محلية قابلة للتعديل.
+          const isEnding = i === count - 1;
+          const cast = initial.characters.slice(0, 2).map(c => c.name).filter(Boolean).join(" و");
+          const castText = cast || "الشخصيات الرئيسية";
+          scene = {
+            number: i + 1,
+            title: isEnding ? "الخاتمة وبداية الرجاء" : "تطور الأحداث",
+            visual: isEnding
+              ? "تظهر الشخصيات وقد تجاوزت الأزمة، في مشهد هادئ يعكس معنى القصة."
+              : "تتفاعل الشخصيات مع الحدث الرئيسي في مكان القصة، مع إظهار مشاعرها بوضوح.",
+            narration: isEnding
+              ? "تنتهي الأحداث برسالة القصة: المحبة والرجاء يصنعان بداية جديدة."
+              : "يتقدم الحدث وتواجه الشخصيات نتيجة اختياراتها، لتتضح الرسالة الإنسانية والروحية للقصة.",
+            imagePrompt: "Cinematic biblical drama, expressive characters, historically respectful setting, natural warm light, realistic film still",
+            videoPrompt: "Slow cinematic camera movement, subtle character motion, natural lighting, realistic historical drama",
+          };
+          setGenerationStatus("تعذر توليد المشهد " + (i + 1) + " آليًا؛ أُنشئت مسودة بديلة لـ " + castText + " ويمكنك تعديلها، وسيستمر الفيلم.");
+        }
         const normalized: Scene = {
           number: i + 1, title: String(scene.title || "المشهد " + (i + 1)),
           duration: String(scene.duration || "15-20 ثانية"),
