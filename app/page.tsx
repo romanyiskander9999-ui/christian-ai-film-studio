@@ -525,8 +525,10 @@ export default function Home() {
             "القصة: " + idea.slice(0, 450) + "\nالعنوان: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 180) + "\nالمشهد " + (i + 1) + " من " + count + ". " + (i === 0 ? "قدّم المكان والشخصيات." : i === count - 1 ? "اكتب خاتمة واضحة." : "طوّر الحدث.") + " أعد ستة حقول قصيرة فقط.",
             220, "كتابة المشهد " + (i + 1)
           );
-        } catch {
-          // لا نوقف الفيلم بسبب النموذج الصغير: أنشئ مسودة مشهد محلية قابلة للتعديل.
+        } catch (sceneError) {
+          // لا ننشئ مسودة بديلة إلا عند فشل تنسيق JSON؛ أخطاء الاتصال والنموذج والمهلة يجب أن تظهر للمستخدم.
+          const sceneMessage = sceneError instanceof Error ? sceneError.message : String(sceneError);
+          if (!sceneMessage.startsWith("تعذر إكمال JSON في مرحلة:")) throw sceneError;
           const isEnding = i === count - 1;
           const cast = initial.characters.slice(0, 2).map(c => c.name).filter(Boolean).join(" و");
           const castText = cast || "الشخصيات الرئيسية";
