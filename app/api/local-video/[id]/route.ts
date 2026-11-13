@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ id: st
     if (!base) return NextResponse.json({ error: "COMFYUI_API_URL غير مضبوط." }, { status: 503 });
     const { id } = await context.params;
     if (!/^[a-f0-9-]{8,80}$/i.test(id)) return NextResponse.json({ error: "رقم المهمة غير صالح." }, { status: 400 });
-    const response = await fetch(base + "/history/" + encodeURIComponent(id), { cache: "no-store" });
+    const response = await fetch(base + "/history/" + encodeURIComponent(id), { cache: "no-store", signal: AbortSignal.timeout(20000) });
     const history = await response.json();
     if (!response.ok) return NextResponse.json({ error: "تعذر جلب سجل ComfyUI.", details: history }, { status: response.status });
     const entry = history[id];
