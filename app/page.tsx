@@ -195,7 +195,7 @@ export default function Home() {
       if (!response.ok) throw new Error(data.error || "تعذر تحديث حالة ComfyUI.");
       setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: data.status, videoUrl: data.videoUrl || s.videoUrl, videoError: "" } : s) }) : prev);
     } catch (e) {
-      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
+      setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoStatus: "FAILED", videoError: e instanceof Error ? e.message : "حدث خطأ" } : s) }) : prev);
     }
   }
 
@@ -645,7 +645,7 @@ export default function Home() {
           <div className="videoMaker"><b>توليد الفيديو السحابي — Wan 2.2</b>
           <p>يمكنك إرسال وصف المشهد مباشرة من هذا الزر إلى محرك Wan 2.2 على Hugging Face ومتابعة حالة المهمة من الاستوديو. الخدمة المجانية محدودة بحصة يومية وطابور انتظار، وقد تتوقف المساحة العامة مؤقتًا.</p>
           <p className="muted">يتابع الاستوديو المهام المرسلة تلقائيًا كل 15 ثانية ما دامت صفحة المشروع مفتوحة؛ لا تحتاج إلى الضغط المتكرر على تحديث الحالة.</p>
-          <div className="videoActions"><button className="primary" onClick={() => generateCloudVideo(active)} disabled={board.scenes[active].cloudStatus === "SUBMITTING"}>{board.scenes[active].cloudStatus === "SUBMITTING" ? "جارٍ إرسال المهمة..." : "✦ إنتاج الفيديو مباشرة مجانًا"}</button><button className="secondary" onClick={() => copyScenePrompt(active)}>نسخ وصف المشهد للفيديو</button>{board.scenes[active].cloudTaskId && <button className="secondary" onClick={() => refreshCloudVideo(active)}>تحديث حالة التوليد ({board.scenes[active].cloudStatus || "قيد الانتظار"})</button>}<a className="secondary" href="https://huggingface.co/spaces/mastaP/wan22-remix-sfw-t2v" target="_blank" rel="noreferrer">فتح محرك Wan 2.2 في نافذة مستقلة ↗</a></div>
+          <div className="videoActions"><button className="primary" onClick={() => generateCloudVideo(active)} disabled={["SUBMITTING", "QUEUED", "RUNNING", "IN_PROGRESS"].includes(String(board.scenes[active].cloudStatus || "").toUpperCase())}>{board.scenes[active].cloudStatus === "SUBMITTING" ? "جارٍ إرسال المهمة..." : ["QUEUED", "RUNNING", "IN_PROGRESS"].includes(String(board.scenes[active].cloudStatus || "").toUpperCase()) ? "الفيديو قيد التوليد..." : "✦ إنتاج الفيديو مباشرة مجانًا"}</button><button className="secondary" onClick={() => copyScenePrompt(active)}>نسخ وصف المشهد للفيديو</button>{board.scenes[active].cloudTaskId && <button className="secondary" onClick={() => refreshCloudVideo(active)}>تحديث حالة التوليد ({board.scenes[active].cloudStatus || "قيد الانتظار"})</button>}<a className="secondary" href="https://huggingface.co/spaces/mastaP/wan22-remix-sfw-t2v" target="_blank" rel="noreferrer">فتح محرك Wan 2.2 في نافذة مستقلة ↗</a></div>
           <div style={{ marginTop: 16, border: "1px solid #d8d0c2", borderRadius: 14, overflow: "hidden", background: "#111" }}>
             <iframe title="Wan 2.2 cloud video generator" src="https://mastap-wan22-remix-sfw-t2v.hf.space" style={{ width: "100%", height: 760, border: 0, background: "#111" }} allow="clipboard-write; fullscreen" loading="lazy" />
           </div>
