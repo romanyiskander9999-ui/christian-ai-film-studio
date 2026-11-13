@@ -419,7 +419,29 @@ export default function Home() {
       if (streamError) throw new Error("خطأ Ollama: " + streamError);
       if (!output.trim()) throw new Error("لم يُرجع النموذج نتيجة في مرحلة: " + stage);
       try { return JSON.parse(output); }
-      catch { throw new Error("النموذج أرسل JSON غير مكتمل في مرحلة: " + stage + ". أعد المحاولة؛ الأجزاء المكتملة محفوظة."); }
+      catch {
+        if (stage === "إعداد ملخص الفيلم") {
+          const repaired = await fetch(base + "/api/chat", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model, stream: false, format: "json",
+              messages: [
+                { role: "system", content: "أخرج JSON صالحًا ومكتملًا فقط بالمفاتيح title,logline,synopsis,characters. characters عنصران كحد أقصى وكل عنصر name وdescription. اختصر بشدة." },
+                { role: "user", content: "أنشئ ملخصًا جديدًا مكتملًا وقصيرًا لهذه الفكرة: " + idea.slice(0, 500) }
+              ],
+              options: { temperature: 0.1, num_ctx: 1024, num_predict: 260, num_batch: 32 },
+              keep_alive: "10m"
+            }),
+            signal: AbortSignal.timeout(240000), cache: "no-store"
+          });
+          if (repaired.ok) {
+            const payload = await repaired.json();
+            const content = payload.message?.content;
+            if (typeof content === "string") { try { return JSON.parse(content); } catch {} }
+          }
+        }
+        throw new Error("النموذج أرسل JSON غير مكتمل في مرحلة: " + stage + ". حاول مرة أخرى؛ لم تُحذف بيانات المشروع.");
+      }
     }
 
     try {
@@ -430,9 +452,9 @@ export default function Home() {
       } else {
         setGenerationStatus("المرحلة 1 من 4: إعداد عنوان الفيلم وملخصه...");
         const meta = await askJson(
-          "أنت كاتب سيناريو مسيحي. أخرج JSON قصيرًا وصالحًا فقط بالمفاتيح title,logline,synopsis,characters. characters مصفوفة من عنصرين كحد أقصى، وكل عنصر name,description,visualPrompt. لا تكتب مشاهد أو مقدمات. التزم بالنص الكتابي ولا تخترع مراجع.",
-          "الفكرة: " + idea.slice(0, 1800) + "\nالطابع: " + style + "\nالجمهور: " + audience + "\nالمرجع: " + reference + "\nاكتب عنوانًا وملخصًا موجزًا وشخصيتين كحد أقصى.",
-          180, "إعداد ملخص الفيلم"
+          "أنت كاتب سيناريو. أخرج JSON صالحًا فقط بهذه المفاتيح الأربعة: title نص قصير، logline جملة واحدة، synopsis جملتان فقط، characters مصفوفة من عنصرين كحد أقصى وكل عنصر يحتوي name وdescription فقط. لا تضف visualPrompt ولا أي مفاتيح أخرى. اجعل كل القيم قصيرة جدًا وأغلق الأقواس وعلامات الاقتباس.",
+          "الفكرة: " + idea.slice(0, 900) + "\nالطابع: " + style + "\nالجمهور: " + audience + "\nالمرجع: " + reference + "\nأعد JSON صغيرًا مكتملًا فقط.",
+          320, "إعداد ملخص الفيلم"
         );
         initial = {
           title: String(meta.title || "فيلم الينبوع"),
