@@ -52,7 +52,11 @@ export default function Home() {
           setSavedAt(parsed.savedAt || "تم استرجاع المشروع");
         }
       }
-    } catch { localStorage.removeItem("alyanbo3-film-studio-project"); }
+    } catch {
+      // لا نحذف النسخة المحفوظة تلقائيًا عند تعذر تحليلها؛ نحافظ عليها لاحتمال استعادتها يدويًا.
+      setSavedAt("تعذر قراءة النسخة المحفوظة — لم تُحذف.");
+      setError("تعذر قراءة بيانات المشروع المحفوظة. لم نحذف الملف المحلي حفاظًا على بياناتك؛ صدّر نسخة احتياطية إن كانت ما زالت قابلة للقراءة قبل بدء مشروع جديد.");
+    }
   }, []);
 
   useEffect(() => {
@@ -362,6 +366,16 @@ export default function Home() {
     localStorage.removeItem("alyanbo3-film-studio-project"); setBoard(null); setIdea(""); setSavedAt("");
   }
 
+  function startNewProject() {
+    if (!confirm("ابدأ مشروعًا جديدًا؟ سيُستبدل المشروع المحفوظ في هذا المتصفح. نزّل نسخة JSON من المشروع الحالي أولًا إذا أردت الاحتفاظ به.")) return;
+    localStorage.removeItem("alyanbo3-film-studio-project");
+    stopSceneSpeech();
+    if (finalFilmUrl) URL.revokeObjectURL(finalFilmUrl);
+    if (soundtrackUrl) URL.revokeObjectURL(soundtrackUrl);
+    setBoard(null); setIdea(""); setSavedAt(""); setActive(0); setFinalFilmUrl("");
+    setSoundtrackUrl(""); setSoundtrackName(""); setAssemblyStatus(""); setError(""); setGenerationStatus("");
+  }
+
   function saveOllamaSettings() {
     const url = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
     if (!(url.startsWith("http://") || url.startsWith("https://")) ) { setOllamaStatus("اكتب عنوانًا يبدأ بـ http:// أو https://"); return; }
@@ -392,7 +406,14 @@ export default function Home() {
     const existingBoard = board;
     const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
     const model = ollamaModel.trim() || "qwen2.5:1.5b";
-    const count = duration === "60-90 ثانية" ? 3 : duration === "2-3 دقائق" ? 4 : 5;
+    const scenePlan: Record<string, { count: number; length: string }> = {
+      "60-90 ثانية": { count: 3, length: "20-30 ثانية" },
+      "2-3 دقائق": { count: 4, length: "30-45 ثانية" },
+      "3-5 دقائق": { count: 6, length: "30-50 ثانية" },
+      "5-10 دقائق": { count: 8, length: "40-75 ثانية" },
+      "10-20 دقيقة": { count: 12, length: "50-100 ثانية" }
+    };
+    const { count, length: sceneDuration } = scenePlan[duration] || scenePlan["60-90 ثانية"];
 
     // كل طلب صغير ومستقل؛ نحفظ النتيجة بعد كل مرحلة حتى لا نفقد العمل كله.
     async function askJson(system: string, user: string, tokenLimit: number, stage: string) {
@@ -522,7 +543,7 @@ export default function Home() {
         try {
           scene = await askJson(
             "أخرج JSON فقط بستة مفاتيح: number,title,visual,narration,imagePrompt,videoPrompt. اكتب جملًا قصيرة جدًا. imagePrompt وvideoPrompt بالإنجليزية. لا تضف شرحًا.",
-            "القصة: " + idea.slice(0, 450) + "\nالعنوان: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 180) + "\nالمشهد " + (i + 1) + " من " + count + ". " + (i === 0 ? "قدّم المكان والشخصيات." : i === count - 1 ? "اكتب خاتمة واضحة." : "طوّر الحدث.") + " أعد ستة حقول قصيرة فقط.",
+            "القصة: " + idea.slice(0, 450) + "\nالعنوان: " + initial.title + "\nملخص: " + initial.synopsis.slice(0, 180) + "\nالمشهد " + (i + 1) + " من " + count + ". المدة المستهدفة لهذا المشهد: " + sceneDuration + ". " + (i === 0 ? "قدّم المكان والشخصيات." : i === count - 1 ? "اكتب خاتمة واضحة." : "طوّر الحدث.") + " أعد ستة حقول قصيرة فقط.",
             220, "كتابة المشهد " + (i + 1)
           );
         } catch (sceneError) {
@@ -548,7 +569,7 @@ export default function Home() {
         }
         const normalized: Scene = {
           number: i + 1, title: String(scene.title || "المشهد " + (i + 1)),
-          duration: String(scene.duration || "15-20 ثانية"),
+          duration: String(scene.duration || sceneDuration),
           visual: String(scene.visual || ""), camera: String(scene.camera || ""),
           dialogue: String(scene.dialogue || ""), narration: String(scene.narration || ""),
           prompt: String(scene.imagePrompt || scene.videoPrompt || ""),
@@ -613,7 +634,7 @@ export default function Home() {
     </section>
 
     {board && <section className="panel results">
-      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={exportSubtitles}>تنزيل الترجمة SRT</button><button className="secondary" onClick={exportProjectJson}>تصدير المشروع كاملًا JSON</button><label className="secondary uploadVideo">استيراد مشروع JSON<input type="file" accept=".json,application/json" onChange={e => { const file = e.target.files?.[0]; if (file) void importProjectJson(file); e.currentTarget.value = ""; }} /></label><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
+      <div className="sectionTitle"><div><span className="eyebrow">02 / مخرجات الذكاء الاصطناعي</span><h2>{board.title}</h2><p className="muted">{board.logline}</p><p className="muted">حفظ تلقائي على هذا الجهاز: {savedAt || "جارٍ الحفظ"}</p></div><div className="resultActions"><button className="secondary" onClick={startNewProject}>مشروع جديد</button><button className="secondary" onClick={exportScript}>تنزيل السيناريو TXT</button><button className="secondary" onClick={exportSubtitles}>تنزيل الترجمة SRT</button><button className="secondary" onClick={exportProjectJson}>تصدير المشروع كاملًا JSON</button><label className="secondary uploadVideo">استيراد مشروع JSON<input type="file" accept=".json,application/json" onChange={e => { const file = e.target.files?.[0]; if (file) void importProjectJson(file); e.currentTarget.value = ""; }} /></label><button className="secondary" onClick={() => navigator.clipboard.writeText(JSON.stringify(board, null, 2))}>نسخ البيانات JSON</button><button className="secondary dangerButton" onClick={clearSavedProject}>حذف المشروع المحفوظ</button></div></div>
       <div className="summary"><b>ملخص الفيلم</b><p>{board.synopsis}</p></div>
       {board.visualBible && <div className="summary"><b>الدليل البصري الموحد للفيلم</b><p><strong>العالم والحقبة:</strong> {board.visualBible.world}</p><p><strong>الألوان والإضاءة:</strong> {board.visualBible.palette}</p><p><strong>قواعد الاستمرارية:</strong> {board.visualBible.continuity}</p><p><strong>التوجيه الفني:</strong> {board.visualBible.styleGuide}</p></div>}<h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p>{c.visualPrompt && <div className="prompt">{c.visualPrompt}</div>}</article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
