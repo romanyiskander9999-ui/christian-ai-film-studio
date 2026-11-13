@@ -360,49 +360,36 @@ export default function Home() {
 
   async function generate() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
-    setLoading(true); setError(""); setBoard(null); setGenerationStatus("جارٍ الاتصال بالنموذج وتحميله في الذاكرة...");
-    try {
-      const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
+    setLoading(true); setError(""); setBoard(null); setActive(0);
+    const base = (ollamaUrl.trim().endsWith("/") ? ollamaUrl.trim().slice(0, -1) : ollamaUrl.trim());
+    const model = ollamaModel.trim() || "qwen2.5:1.5b";
+
+    // كل طلب صغير ومستقل؛ نحفظ النتيجة بعد كل مرحلة حتى لا نفقد العمل كله.
+    async function askJson(system: string, user: string, tokenLimit: number, stage: string) {
       const response = await fetch(base + "/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: ollamaModel.trim() || "qwen2.5:1.5b",
-          stream: true,
-          format: "json",
-          messages: [
-            { role: "system", content: "أنت كاتب سيناريو ومخرج فني متخصص في الأفلام الدينية المسيحية باللغة العربية. أخرج JSON صالحًا فقط بالمفاتيح: title, logline, synopsis, visualBible{world,palette,continuity,styleGuide}, characters[{name,description,visualPrompt}], scenes[{number,title,duration,visual,camera,dialogue,narration,prompt,imagePrompt,videoPrompt,negativePrompt,audioDesign}], accuracyNotes. اجعل الناتج مختصرًا ومناسبًا لجهاز محدود الموارد: عند مدة 60-90 ثانية أنشئ 3 مشاهد فقط، بحد أقصى 4، وشخصيتين أو ثلاث، وملخصًا لا يتجاوز 3 جمل. اجعل كل وصف بصري وسينمائي موجزًا، وكل prompt إنجليزيًا من جملة أو جملتين فقط. لا تكرر المعلومات بين الحقول ولا تضف شروحًا خارج JSON. احترم العقيدة والتقاليد القبطية الأرثوذكسية. إذا كانت القصة كتابية فالتزم بأحداث النص ولا تعرض الإضافات الدرامية كحقائق. لا تختلق اقتباسات كتابية أو آبائية أو مراجع. لا تضع كتابة أو شعارات داخل الصور." },
-            { role: "user", content: "الفكرة: " + idea + "\\nالطابع البصري: " + style + "\\nالمدة: " + duration + "\\nالجمهور: " + audience + "\\nالمرجع: " + reference }
-          ],
-          // إعدادات اقتصادية جدًا للأجهزة القديمة: سياق أقصر ومخرجات محدودة
-          options: { temperature: 0.35, num_ctx: 2048, num_predict: 900 },
+          model, stream: true, format: "json",
+          messages: [{ role: "system", content: system }, { role: "user", content: user }],
+          options: { temperature: 0.2, num_ctx: 1024, num_predict: tokenLimit, num_batch: 32 },
           keep_alive: "10m"
         }),
-        // لا نقطع توليد السيناريو سريعًا؛ قد يكون النموذج بطيئًا على الأجهزة محدودة الذاكرة
-        signal: AbortSignal.timeout(900000),
+        signal: AbortSignal.timeout(240000),
         cache: "no-store"
       });
       if (!response.ok) {
         let detail = "";
-        try {
-          const errorPayload = await response.json();
-          detail = errorPayload.error || errorPayload.message || "";
-        } catch {
-          try { detail = await response.text(); } catch {}
-        }
+        try { const payload = await response.json(); detail = payload.error || payload.message || ""; } catch {}
         if (response.status === 404 && /model/i.test(detail)) {
-          throw new Error("النموذج غير مثبت في Ollama: " + detail + " — نفّذ في PowerShell: ollama pull " + (ollamaModel.trim() || "qwen2.5:1.5b"));
+          throw new Error("النموذج غير مثبت: " + detail + " — نفّذ في PowerShell: ollama pull " + model);
         }
-        throw new Error("رد Ollama (" + response.status + "): " + (detail || "تحقق من عنوان Ollama والنموذج."));
+        throw new Error("تعذر " + stage + " (" + response.status + "): " + (detail || "تحقق من Ollama."));
       }
-      // اقرأ استجابة Ollama تدريجيًا بدل انتظار JSON كامل؛ هذا يمنع ظهور الواجهة وكأنها متوقفة.
-      if (!response.body) throw new Error("المتصفح لم يستطع قراءة تدفق الاستجابة من Ollama.");
-      setGenerationStatus("النموذج يعمل الآن ويكتب السيناريو...");
+      if (!response.body) throw new Error("المتصفح لا يستطيع قراءة استجابة Ollama.");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = "";
-      let output = "";
-      let receivedError = "";
+      let buffer = "", output = "", streamError = "";
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -410,41 +397,71 @@ export default function Home() {
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          let chunk: any;
-          try { chunk = JSON.parse(trimmed); } catch { continue; }
-          if (chunk.error) receivedError = String(chunk.error);
-          const piece = chunk.message?.content;
-          if (typeof piece === "string" && piece) {
-            output += piece;
-            setGenerationStatus("جارٍ كتابة السيناريو... تم استقبال " + output.length.toLocaleString("ar-EG") + " حرفًا");
-          }
+          if (!line.trim()) continue;
+          try {
+            const chunk = JSON.parse(line);
+            if (chunk.error) streamError = String(chunk.error);
+            if (typeof chunk.message?.content === "string") output += chunk.message.content;
+          } catch {}
         }
+        setGenerationStatus(stage + " — " + output.length.toLocaleString("ar-EG") + " حرف");
       }
+      buffer += decoder.decode();
       if (buffer.trim()) {
         try {
-          const last = JSON.parse(buffer);
-          if (last.error) receivedError = String(last.error);
-          if (typeof last.message?.content === "string") output += last.message.content;
-        } catch { /* Ignore a trailing incomplete transport frame. */ }
+          const chunk = JSON.parse(buffer);
+          if (chunk.error) streamError = String(chunk.error);
+          if (typeof chunk.message?.content === "string") output += chunk.message.content;
+        } catch {}
       }
-      if (receivedError) throw new Error("خطأ من Ollama: " + receivedError);
-      if (!output) throw new Error("لم يُرجع Ollama نص السيناريو. تأكد من تثبيت النموذج المحدد.");
-      setGenerationStatus("اكتمل النص، جارٍ تنظيم المشاهد...");
-      const storyboard = JSON.parse(output);
-      if (!storyboard.title || !Array.isArray(storyboard.scenes) || storyboard.scenes.length === 0) throw new Error("السيناريو الناتج غير مكتمل. أعد المحاولة أو استخدم نموذجًا أقوى.");
-      storyboard.visualBible ??= { world: "", palette: "", continuity: "", styleGuide: "" };
-      storyboard.characters = Array.isArray(storyboard.characters) ? storyboard.characters : [];
-      storyboard.scenes = storyboard.scenes.map((scene: any, index: number) => ({ number: index + 1, ...scene, imagePrompt: scene.imagePrompt || scene.prompt || "", videoPrompt: scene.videoPrompt || scene.prompt || "", negativePrompt: scene.negativePrompt || "text, logos, watermark, inconsistent character appearance, distorted anatomy", audioDesign: scene.audioDesign || "" }));
-      setBoard(storyboard);
-      setActive(0);
-      setGenerationStatus("اكتمل السيناريو بنجاح.");
+      if (streamError) throw new Error("خطأ Ollama: " + streamError);
+      if (!output.trim()) throw new Error("لم يُرجع النموذج نتيجة في مرحلة: " + stage);
+      try { return JSON.parse(output); }
+      catch { throw new Error("النموذج أرسل JSON غير مكتمل في مرحلة: " + stage + ". أعد المحاولة؛ الأجزاء المكتملة محفوظة."); }
+    }
+
+    try {
+      setGenerationStatus("المرحلة 1 من 4: إعداد عنوان الفيلم وملخصه...");
+      const meta = await askJson(
+        "أنت كاتب سيناريو مسيحي. أخرج JSON قصيرًا وصالحًا فقط بالمفاتيح title,logline,synopsis,characters. characters مصفوفة من عنصرين كحد أقصى، وكل عنصر name,description,visualPrompt. لا تكتب مشاهد أو مقدمات. التزم بالنص الكتابي ولا تخترع مراجع.",
+        "الفكرة: " + idea.slice(0, 1800) + "\nالطابع: " + style + "\nالجمهور: " + audience + "\nالمرجع: " + reference + "\nاكتب عنوانًا وملخصًا موجزًا وشخصيتين كحد أقصى.",
+        220, "إعداد ملخص الفيلم"
+      );
+      const initial: Storyboard = {
+        title: String(meta.title || "فيلم الينبوع"),
+        logline: String(meta.logline || ""),
+        synopsis: String(meta.synopsis || ""),
+        visualBible: { world: style, palette: "", continuity: "حافظ على ثبات ملامح الشخصيات بين المشاهد.", styleGuide: style },
+        characters: Array.isArray(meta.characters) ? meta.characters.slice(0, 3) : [],
+        scenes: [], accuracyNotes: ["راجع النص والمراجع الكتابية قبل اعتماد السيناريو النهائي."]
+      };
+      setBoard(initial);
+      const count = duration === "60-90 ثانية" ? 3 : duration === "2-3 دقائق" ? 4 : 5;
+      for (let i = 0; i < count; i++) {
+        setGenerationStatus("المرحلة " + (i + 2) + " من " + (count + 1) + ": كتابة المشهد " + (i + 1) + " من " + count + "...");
+        const scene = await askJson(
+          "أنت كاتب مشاهد سينمائية. أخرج كائن JSON واحدًا فقط بمفاتيح number,title,duration,visual,camera,dialogue,narration,imagePrompt,videoPrompt,negativePrompt,audioDesign. اكتب مشهدًا واحدًا فقط، موجزًا جدًا. imagePrompt وvideoPrompt بالإنجليزية، جملة واحدة لكل منهما. لا تضف حقائق غير موجودة في المصدر.",
+          "القصة: " + idea.slice(0, 1200) + "\nعنوان الفيلم: " + initial.title + "\nملخص: " + initial.synopsis + "\nالشخصيات: " + initial.characters.map(c => c.name + ": " + c.description).join("؛ ") + "\nهذا المشهد رقم " + (i + 1) + " من " + count + ". " + (i === 0 ? "ابدأ بتقديم المكان والشخصيات." : i === count - 1 ? "اختم القصة بخاتمة واضحة." : "طوّر الحدث دون تكرار المشاهد السابقة.") + " اجعل المدة 15-20 ثانية.",
+          260, "كتابة المشهد " + (i + 1)
+        );
+        const normalized: Scene = {
+          number: i + 1, title: String(scene.title || "المشهد " + (i + 1)),
+          duration: String(scene.duration || "15-20 ثانية"),
+          visual: String(scene.visual || ""), camera: String(scene.camera || ""),
+          dialogue: String(scene.dialogue || ""), narration: String(scene.narration || ""),
+          prompt: String(scene.imagePrompt || scene.videoPrompt || ""),
+          imagePrompt: String(scene.imagePrompt || ""), videoPrompt: String(scene.videoPrompt || ""),
+          negativePrompt: String(scene.negativePrompt || "text, logos, watermark, distorted anatomy"),
+          audioDesign: String(scene.audioDesign || "")
+        };
+        setBoard(prev => prev ? ({ ...prev, scenes: [...prev.scenes, normalized] }) : prev);
+      }
+      setGenerationStatus("اكتمل السيناريو وحُفظت جميع المشاهد.");
     } catch (e) {
       const message = e instanceof Error ? e.message : "حدث خطأ غير متوقع.";
       setError(message.includes("timed out") || message.includes("Timeout") || message.includes("timeout")
-        ? "استغرق النموذج وقتًا أطول من المتوقع. اترك Ollama يعمل، وجرّب فكرة أقصر أو مدة فيلم 60-90 ثانية. إذا تكررت المشكلة فالجهاز لا يستطيع توليد هذا الحجم بسرعة كافية."
-        : message);
+        ? "توقف النموذج بسبب بطء الاستجابة. تم الاحتفاظ بكل مرحلة اكتملت. جرّب إعادة المحاولة بعد إغلاق البرامج الأخرى."
+        : message + (board ? " تم الاحتفاظ بالأجزاء التي اكتملت." : ""));
     } finally { setLoading(false); }
   }
 
