@@ -629,7 +629,7 @@ export default function Home() {
         <p className="muted">يجب السماح لنطاق الموقع في OLLAMA_ORIGINS ثم إعادة تشغيل Ollama. راجع README. لا تفتح المنفذ 11434 للإنترنت ولا تستخدم علامة *.</p>
       </div>
       <div className="actions"><p>سيُنشأ السيناريو أولًا لمراجعته قبل الانتقال إلى إنتاج الفيديو.</p><button className="primary" onClick={generate} disabled={loading}>{loading ? "جارٍ إعداد السيناريو..." : "✦ إنشاء السيناريو والمشاهد ←"}</button></div>
-      {loading && <div className="summary" role="status" aria-live="polite" style={{ marginTop: 14 }}><b>حالة إنشاء السيناريو</b><p>{generationStatus || "جارٍ العمل..."}</p><p className="muted">اترك Ollama يعمل والصفحة مفتوحة. الوضع المختصر مصمم لفيلم 60-90 ثانية لتقليل وقت التوليد والذاكرة.</p></div>}
+      {loading && <div className="summary" role="status" aria-live="polite" style={{ marginTop: 14 }}><b>حالة إنشاء السيناريو</b><p>{generationStatus || "جارٍ العمل..."}</p><p className="muted">اترك Ollama يعمل والصفحة مفتوحة. عدد المشاهد ومدتها يتغيران تلقائيًا حسب المدة التي اخترتها للفيلم.</p></div>}
       {error && <div className="error">{error}</div>}
     </section>
 
