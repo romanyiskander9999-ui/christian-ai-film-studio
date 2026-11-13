@@ -23,7 +23,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
       return NextResponse.json({ status: "IN_PROGRESS" });
     }
     for (const output of Object.values(entry.outputs) as any[]) {
-      for (const key of ["videos", "gifs", "images"]) {
+      for (const key of ["videos", "gifs"]) {
         const files = Array.isArray(output?.[key]) ? output[key] : [];
         const file = files.find((item: any) => item?.filename);
         if (file) {
