@@ -525,6 +525,50 @@ export default function Home() {
     } finally { setOllamaBusy(false); }
   }
 
+  function generateOfflineDraft() {
+    if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
+    const scenePlan: Record<string, { count: number; length: string }> = {
+      "60-90 ثانية": { count: 3, length: "20-30 ثانية" },
+      "2-3 دقائق": { count: 4, length: "30-45 ثانية" },
+      "3-5 دقائق": { count: 6, length: "30-50 ثانية" },
+      "5-10 دقائق": { count: 8, length: "40-75 ثانية" },
+      "10-20 دقيقة": { count: 12, length: "50-100 ثانية" }
+    };
+    const plan = scenePlan[duration] || scenePlan["60-90 ثانية"];
+    const beats = [
+      ["المقدمة والتعريف", "تقديم الزمان والمكان والشخصيات، وتهيئة المشاهد لفهم خلفية القصة."],
+      ["بداية الحدث", "يظهر الحدث المحرك للقصة، وتبدأ الشخصيات في مواجهة الموقف الأساسي."],
+      ["تصاعد الصراع", "تتطور الأحداث وتظهر العقبات والاختيارات التي تواجه الشخصيات."],
+      ["لحظة التحول", "تصل القصة إلى لحظة حاسمة تكشف حقيقة الشخصيات ومعنى ما يحدث."],
+      ["الحل والنتيجة", "تبدأ الأزمة في الانفراج، وتظهر نتائج القرارات والأفعال."],
+      ["الخاتمة والرسالة", "تنتهي القصة بصورة مؤثرة ورسالة واضحة يمكن للمشاهد تذكرها."]
+    ];
+    const scenes: Scene[] = Array.from({ length: plan.count }, (_, index) => {
+      const beat = beats[Math.min(beats.length - 1, Math.floor(index * beats.length / plan.count))];
+      return {
+        number: index + 1, title: beat[0], duration: plan.length,
+        visual: beat[1] + " اعتمد على تفاصيل النص الذي أدخله المستخدم: " + idea.trim().slice(0, 260),
+        camera: index === 0 ? "لقطة تأسيسية واسعة ثم اقتراب تدريجي." : index === plan.count - 1 ? "اقتراب هادئ ثم تثبيت اللقطة الختامية." : "حركة كاميرا سينمائية بطيئة مع التركيز على تعبيرات الشخصيات.",
+        dialogue: "", narration: beat[1],
+        prompt: "Cinematic " + style + ", " + beat[0] + ", historically respectful, expressive characters, natural lighting",
+        imagePrompt: "Cinematic " + style + ", " + beat[0] + ", " + idea.trim().slice(0, 180) + ", detailed composition, natural lighting, no text",
+        videoPrompt: "Slow cinematic camera movement, subtle character motion, consistent character appearance, natural lighting",
+        negativePrompt: "text, logos, watermark, distorted anatomy",
+        audioDesign: "موسيقى خلفية هادئة ومؤثرات صوتية مناسبة للمشهد."
+      };
+    });
+    const title = idea.trim().split(/[.!؟\n]/)[0].slice(0, 65) || "فيلم الينبوع";
+    setBoard({
+      title, logline: "مسودة أولية مبنية على الفكرة المدخلة، قابلة للتحرير والتطوير.",
+      synopsis: idea.trim().slice(0, 900),
+      visualBible: { world: style, palette: "ألوان متناسقة وإضاءة طبيعية تخدم الحالة الدرامية.", continuity: "حافظ على ثبات ملامح الشخصيات والملابس والمواقع بين المشاهد.", styleGuide: style },
+      characters: [], scenes,
+      accuracyNotes: ["هذه مسودة محلية أولية أُنشئت دون اتصال بنموذج ذكاء اصطناعي. راجع الوقائع والمراجع والحوار قبل الإنتاج."]
+    });
+    setActive(0); setFinalFilmUrl(""); setError("");
+    setGenerationStatus("تم إنشاء مسودة محلية قابلة للتحرير دون الحاجة إلى Ollama أو اتصال خارجي.");
+  }
+
   async function generate() {
     if (idea.trim().length < 12) { setError("اكتب فكرة القصة بتفاصيل أكثر أولًا."); return; }
     setLoading(true); setError(""); setActive(0);
@@ -748,8 +792,8 @@ export default function Home() {
         <label className="field">المرجع الأساسي<select value={reference} onChange={e => setReference(e.target.value)}><option>الكتاب المقدس</option><option>سير القديسين والتراث القبطي</option><option>قصة تعليمية مستوحاة من القيم المسيحية</option><option>نص أقدمه بنفسي مع مراجع</option></select></label>
       </div>
       <div className="localModel" style={{ marginTop: 18 }}>
-        <b>محرك السيناريو المجاني — Ollama على جهازك</b>
-        <p>يتصل المتصفح مباشرة ببرنامج Ollama على جهازك. لا يمر نص القصة عبر خادم مدفوع، وتُحفظ الإعدادات في هذا المتصفح.</p>
+        <b>محرك الذكاء الاصطناعي المحلي — Ollama (اختياري)</b>
+        <p>هذا الاتصال اختياري ويعمل فقط إذا كان Ollama مثبتًا ويعمل على نفس الجهاز الذي يفتح الموقع. عند فتح الموقع من الهاتف أو من Vercel، فإن 127.0.0.1 يشير إلى الهاتف/جهاز الزائر وليس إلى خادم الموقع. يمكنك استخدام المسودة المحلية دون تثبيت Ollama.</p>
         <div className="grid">
           <label className="field">عنوان Ollama<input value={ollamaUrl} onChange={e => setOllamaUrl(e.target.value)} placeholder="http://127.0.0.1:11434" /></label>
           <label className="field">اسم النموذج<input value={ollamaModel} onChange={e => setOllamaModel(e.target.value)} placeholder="qwen2.5:1.5b" /></label>
@@ -761,7 +805,7 @@ export default function Home() {
         {ollamaStatus && <p className="muted" role="status">{ollamaStatus}</p>}
         <p className="muted">يجب السماح لنطاق الموقع في OLLAMA_ORIGINS ثم إعادة تشغيل Ollama. راجع README. لا تفتح المنفذ 11434 للإنترنت ولا تستخدم علامة *.</p>
       </div>
-      <div className="actions"><p>سيُنشأ السيناريو أولًا لمراجعته قبل الانتقال إلى إنتاج الفيديو.</p><button className="primary" onClick={generate} disabled={loading}>{loading ? "جارٍ إعداد السيناريو..." : "✦ إنشاء السيناريو والمشاهد ←"}</button></div>
+      <div className="actions"><p>يمكنك إنشاء السيناريو عبر Ollama عند توفره، أو إنشاء مسودة محلية قابلة للتحرير دون اتصال.</p><div className="videoActions"><button className="primary" onClick={generate} disabled={loading}>{loading ? "جارٍ إعداد السيناريو..." : "✦ إنشاء بالذكاء الاصطناعي ←"}</button><button type="button" className="secondary" onClick={generateOfflineDraft} disabled={loading}>إنشاء مسودة دون اتصال</button></div></div>
       {loading && <div className="summary" role="status" aria-live="polite" style={{ marginTop: 14 }}><b>حالة إنشاء السيناريو</b><p>{generationStatus || "جارٍ العمل..."}</p><p className="muted">اترك Ollama يعمل والصفحة مفتوحة. عدد المشاهد ومدتها يتغيران تلقائيًا حسب المدة التي اخترتها للفيلم.</p></div>}
       {error && <div className="error">{error}</div>}
     </section>
