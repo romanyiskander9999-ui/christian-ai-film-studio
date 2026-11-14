@@ -297,6 +297,14 @@ export default function Home() {
     setBoard(prev => prev ? ({ ...prev, scenes: prev.scenes.map((s, i) => i === index ? { ...s, videoUrl: url, videoFileName: file.name, videoStatus: "LOCAL_FILE", videoError: "" } : s) }) : prev);
   }
 
+  function updateSceneField(index: number, field: "title" | "duration" | "visual" | "camera" | "dialogue" | "narration", value: string) {
+    setBoard(previous => previous ? ({
+      ...previous,
+      scenes: previous.scenes.map((scene, sceneIndex) => sceneIndex === index ? { ...scene, [field]: value } : scene)
+    }) : previous);
+    setFinalFilmUrl("");
+  }
+
   function copyScenePrompt(index: number) {
     if (!board) return;
     const scene = board.scenes[index];
@@ -763,8 +771,15 @@ export default function Home() {
       <div className="summary"><b>ملخص الفيلم</b><p>{board.synopsis}</p></div>
       {board.visualBible && <div className="summary"><b>الدليل البصري الموحد للفيلم</b><p><strong>العالم والحقبة:</strong> {board.visualBible.world}</p><p><strong>الألوان والإضاءة:</strong> {board.visualBible.palette}</p><p><strong>قواعد الاستمرارية:</strong> {board.visualBible.continuity}</p><p><strong>التوجيه الفني:</strong> {board.visualBible.styleGuide}</p></div>}<h3>الشخصيات وثبات ملامحها</h3><div className="characters">{board.characters?.map((c, i) => <article key={i}><b>{c.name}</b><p>{c.description}</p>{c.visualPrompt && <div className="prompt">{c.visualPrompt}</div>}</article>)}</div>
       <div className="sceneLayout"><aside className="sceneList"><h3>المشاهد ({board.scenes?.length || 0})</h3>{board.scenes?.map((s, i) => <button className={active === i ? "sceneTab selected" : "sceneTab"} key={i} onClick={() => setActive(i)}><small>مشهد {String(i + 1).padStart(2, "0")}</small><b>{s.title}</b><small>{s.duration}</small></button>)}</aside>
-        {board.scenes?.[active] && <article className="sceneDetail"><span className="eyebrow">SCENE {String(active + 1).padStart(2, "0")}</span><h3>{board.scenes[active].title}</h3><small>{board.scenes[active].duration}</small>
-          <h4>الوصف البصري</h4><p>{board.scenes[active].visual}</p><h4>حركة الكاميرا</h4><p>{board.scenes[active].camera}</p><h4>الحوار</h4><p>{board.scenes[active].dialogue || "لا يوجد حوار."}</p><h4>التعليق الصوتي</h4><p>{board.scenes[active].narration || "لا يوجد تعليق صوتي."}</p><div className="videoActions"><button type="button" className="secondary" onClick={() => speakScene(active)}>🔊 استمع للتعليق والحوار بالعربية</button><button type="button" className="secondary" onClick={stopSceneSpeech} disabled={!speaking}>إيقاف الصوت</button></div><p className="muted">النطق مجاني من أصوات العربية المثبتة في المتصفح. جودة الصوت وتوفر اللهجة يعتمدان على جهازك؛ هذه معاينة صوتية وليست ملف MP3 قابلًا للتنزيل.</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
+        {board.scenes?.[active] && <article className="sceneDetail"><span className="eyebrow">SCENE {String(active + 1).padStart(2, "0")} · محرر المشهد</span>
+          <div className="sceneEditGrid">
+            <label className="field">عنوان المشهد<input value={board.scenes[active].title} onChange={e => updateSceneField(active, "title", e.target.value)} /></label>
+            <label className="field">المدة التقديرية<input value={board.scenes[active].duration} onChange={e => updateSceneField(active, "duration", e.target.value)} placeholder="مثال: 20 ثانية" /></label>
+            <label className="field">الوصف البصري<textarea rows={3} value={board.scenes[active].visual} onChange={e => updateSceneField(active, "visual", e.target.value)} /></label>
+            <label className="field">حركة الكاميرا<textarea rows={2} value={board.scenes[active].camera} onChange={e => updateSceneField(active, "camera", e.target.value)} /></label>
+            <label className="field">الحوار<textarea rows={3} value={board.scenes[active].dialogue} onChange={e => updateSceneField(active, "dialogue", e.target.value)} placeholder="اكتب الحوار أو اتركه فارغًا." /></label>
+            <label className="field">التعليق الصوتي<textarea rows={3} value={board.scenes[active].narration} onChange={e => updateSceneField(active, "narration", e.target.value)} placeholder="اكتب نص الراوي لهذا المشهد." /></label>
+          </div><div className="videoActions"><button type="button" className="secondary" onClick={() => speakScene(active)}>🔊 استمع للتعليق والحوار بالعربية</button><button type="button" className="secondary" onClick={stopSceneSpeech} disabled={!speaking}>إيقاف الصوت</button></div><p className="muted">النطق مجاني من أصوات العربية المثبتة في المتصفح. جودة الصوت وتوفر اللهجة يعتمدان على جهازك؛ هذه معاينة صوتية وليست ملف MP3 قابلًا للتنزيل.</p><h4>وصف الصورة المرجعية</h4><div className="prompt">{board.scenes[active].imagePrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].imagePrompt || board.scenes[active].prompt)}>نسخ وصف الصورة</button>
           <h4>وصف حركة الفيديو</h4><div className="prompt">{board.scenes[active].videoPrompt || board.scenes[active].prompt}</div><button className="secondary" onClick={() => navigator.clipboard.writeText(board.scenes[active].videoPrompt || board.scenes[active].prompt)}>نسخ وصف الفيديو</button>
           <h4>الأصوات والمؤثرات</h4><p>{board.scenes[active].audioDesign || "لم تحدد مؤثرات صوتية."}</p><h4>العناصر المستبعدة</h4><div className="prompt">{board.scenes[active].negativePrompt || "لا توجد."}</div>
           <div className="videoMaker"><b>توليد الفيديو السحابي — Wan 2.2</b>
