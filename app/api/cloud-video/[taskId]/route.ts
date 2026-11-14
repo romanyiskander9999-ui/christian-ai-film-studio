@@ -109,7 +109,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
         const videoPath = findVideoFile(payload);
         if (!videoPath) return { status: "FAILED", error: "اكتمل رد مزود الفيديو، لكن لم أجد رابط ملف فيديو ضمن النتيجة.", details: payload };
         try {
-          return { status: "COMPLETED", videoUrl: absoluteFileUrl(videoPath) };
+          return { status: "COMPLETED", videoUrl: "/api/cloud-video/file?url=" + encodeURIComponent(absoluteFileUrl(videoPath)) };
         } catch (error) {
           return { status: "FAILED", error: error instanceof Error ? error.message : "رابط الفيديو غير صالح." };
         }
