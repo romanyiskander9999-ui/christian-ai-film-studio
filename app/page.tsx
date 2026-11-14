@@ -13,6 +13,8 @@ const samples = [
 
 export default function Home() {
   const [idea, setIdea] = useState("");
+  const [sourceImportStatus, setSourceImportStatus] = useState("");
+  const [sourceImportBusy, setSourceImportBusy] = useState(false);
   const [ollamaUrl, setOllamaUrl] = useState("http://127.0.0.1:11434");
   const [ollamaModel, setOllamaModel] = useState("qwen2.5:1.5b");
   const [ollamaStatus, setOllamaStatus] = useState("");
@@ -68,6 +70,70 @@ export default function Home() {
       setSavedAt(stamp);
     } catch { setSavedAt("تعذر الحفظ على هذا الجهاز"); }
   }, [board, idea]);
+
+  async function importSourceFile(file: File) {
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    const supported = ["txt", "md", "csv", "json", "pdf", "docx", "pptx"];
+    if (!supported.includes(extension)) {
+      setSourceImportStatus("صيغة الملف غير مدعومة. استخدم TXT أو MD أو CSV أو JSON أو PDF أو DOCX أو PPTX.");
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setSourceImportStatus("حجم الملف أكبر من 25 ميجابايت. قسّم الملف إلى أجزاء أصغر ثم أعد المحاولة.");
+      return;
+    }
+    setSourceImportBusy(true);
+    setSourceImportStatus("جارٍ قراءة " + file.name + "...");
+    setError("");
+    try {
+      let extracted = "";
+      if (["txt", "md", "csv", "json"].includes(extension)) {
+        extracted = await file.text();
+      } else if (extension === "docx") {
+        const mammoth = await import("mammoth");
+        const result = await mammoth.extractRawText({ arrayBuffer: await file.arrayBuffer() });
+        extracted = result.value || "";
+      } else if (extension === "pptx") {
+        const JSZip = (await import("jszip")).default;
+        const zip = await JSZip.loadAsync(await file.arrayBuffer());
+        const slidePaths = Object.keys(zip.files).filter(path => /^ppt\/slides\/slide\d+\.xml$/i.test(path))
+          .sort((a, b) => Number(a.match(/slide(\d+)/i)?.[1] || 0) - Number(b.match(/slide(\d+)/i)?.[1] || 0));
+        if (!slidePaths.length) throw new Error("لم أعثر على شرائح قابلة للقراءة داخل ملف PowerPoint.");
+        const parser = new DOMParser();
+        const slides: string[] = [];
+        for (const path of slidePaths) {
+          const xml = await zip.files[path].async("text");
+          const doc = parser.parseFromString(xml, "application/xml");
+          const textRuns = Array.from(doc.getElementsByTagName("a:t")).map(node => node.textContent || "").filter(Boolean);
+          if (textRuns.length) slides.push(textRuns.join(" "));
+        }
+        extracted = slides.map((text, index) => "الشريحة " + (index + 1) + "\n" + text).join("\n\n");
+      } else if (extension === "pdf") {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
+        const pdf = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
+        const pages: string[] = [];
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const pdfPage = await pdf.getPage(pageNumber);
+          const content = await pdfPage.getTextContent();
+          const line = content.items.map((item: any) => "str" in item ? item.str : "").filter(Boolean).join(" ");
+          if (line.trim()) pages.push("صفحة " + pageNumber + "\n" + line);
+        }
+        extracted = pages.join("\n\n");
+        if (!extracted.trim()) throw new Error("لم أستطع استخراج نص من PDF. قد يكون الملف صورًا ممسوحة ضوئيًا ويحتاج إلى OCR.");
+      }
+      extracted = extracted.replace(/\u0000/g, "").trim();
+      if (!extracted) throw new Error("الملف لا يحتوي على نص قابل للاستخراج.");
+      const clipped = extracted.length > 120000;
+      const cleanText = extracted.slice(0, 120000);
+      setIdea(previous => previous.trim() ? previous.trim() + "\n\n---\nالنص المستورد: " + file.name + "\n" + cleanText : cleanText);
+      setSourceImportStatus("تم استخراج " + cleanText.length.toLocaleString("ar-EG") + " حرف من " + file.name + (clipped ? " (عُرض أول 120 ألف حرف فقط لحماية أداء المتصفح)." : "."));
+    } catch (e) {
+      setSourceImportStatus(e instanceof Error ? "تعذر استيراد الملف: " + e.message : "حدث خطأ أثناء قراءة الملف.");
+    } finally {
+      setSourceImportBusy(false);
+    }
+  }
 
   function speakScene(index: number) {
     if (!board || typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -607,6 +673,14 @@ export default function Home() {
     <section className="panel">
       <div className="sectionTitle"><div><span className="eyebrow">01 / ابدأ مشروعك</span><h2>ما القصة التي تريد تحويلها إلى فيلم؟</h2></div><span className="tag">إعداد المشروع</span></div>
       <label className="field">فكرة القصة أو النص الأساسي<textarea value={idea} onChange={e => setIdea(e.target.value)} rows={5} placeholder="اكتب القصة أو الصق النص أو اشرح الفكرة التي تريد تحويلها إلى فيلم..." /></label>
+      <div className="sourceImport">
+        <label className="field">استيراد نص من ملف
+          <span className="sourceImportHint">PDF · Word · PowerPoint · TXT · Markdown · CSV · JSON</span>
+          <input type="file" accept=".txt,.md,.csv,.json,.pdf,.docx,.pptx,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation" disabled={sourceImportBusy} onChange={e => { const file = e.currentTarget.files?.[0]; if (file) void importSourceFile(file); e.currentTarget.value = ""; }} />
+        </label>
+        <p className="muted">يُستخرج النص داخل متصفحك ويُضاف إلى مربع القصة. الحد الأقصى 25 ميجابايت للملف و120 ألف حرف للنص المستورد. ملفات PDF المصورة تحتاج إلى OCR خارجي.</p>
+        {sourceImportStatus && <p className="sourceImportStatus" role="status" aria-live="polite">{sourceImportBusy ? "⏳ " : "✓ "}{sourceImportStatus}</p>}
+      </div>
       <div className="samples"><span>جرّب مثالًا:</span>{samples.map(([label, value]) => <button key={label} onClick={() => setIdea(value)}>{label}</button>)}</div>
       <div className="grid">
         <label className="field">الطابع البصري<select value={style} onChange={e => setStyle(e.target.value)}><option>سينمائي تاريخي واقعي</option><option>رسوم متحركة ثلاثية الأبعاد</option><option>دراما تاريخية ملحمية</option><option>وثائقي هادئ</option><option>سينمائي مناسب للأطفال</option></select></label>
