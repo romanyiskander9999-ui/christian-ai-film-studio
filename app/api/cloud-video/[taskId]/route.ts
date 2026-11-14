@@ -10,11 +10,17 @@ function parseSsePayload(raw: string): unknown {
   try { return JSON.parse(raw); } catch { return raw; }
 }
 
+function isVideoPath(value: string): boolean {
+  const lower = value.toLowerCase().split(/[?#]/, 1)[0];
+  return [".mp4", ".webm", ".mov", ".m4v"].some(ext => lower.endsWith(ext));
+}
+
 function findVideoFile(value: unknown, seen = new Set<unknown>()): string | null {
-  if (!value || typeof value !== "object" || seen.has(value)) {
-    if (typeof value === "string" && (/^(https?:\\/\\/|\\/file=|file=)/i.test(value) || /\\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(value))) return value;
+  if (typeof value === "string") {
+    if (value.startsWith("https://") || value.startsWith("/file=") || value.startsWith("file=") || isVideoPath(value)) return value;
     return null;
   }
+  if (!value || typeof value !== "object" || seen.has(value)) return null;
   seen.add(value);
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -26,8 +32,10 @@ function findVideoFile(value: unknown, seen = new Set<unknown>()): string | null
   const obj = value as Record<string, unknown>;
   const mime = typeof obj.mime_type === "string" ? obj.mime_type : "";
   const name = typeof obj.orig_name === "string" ? obj.orig_name : "";
-  const path = typeof obj.url === "string" ? obj.url : typeof obj.path === "string" ? obj.path : "";
-  if (path && (mime.startsWith("video/") || /\\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(path) || /\\.(mp4|webm|mov|m4v)$/i.test(name))) return path;
+  const url = typeof obj.url === "string" ? obj.url : "";
+  const path = typeof obj.path === "string" ? obj.path : "";
+  if (url && (mime.startsWith("video/") || isVideoPath(url) || isVideoPath(name))) return url;
+  if (path && (mime.startsWith("video/") || isVideoPath(path) || isVideoPath(name))) return path;
   for (const child of Object.values(obj)) {
     const found = findVideoFile(child, seen);
     if (found) return found;
@@ -37,7 +45,7 @@ function findVideoFile(value: unknown, seen = new Set<unknown>()): string | null
 
 function absoluteFileUrl(value: string): string {
   let normalized = value.startsWith("file=") ? "/" + value : value;
-  if (/^\\/tmp\\//.test(normalized)) normalized = "/gradio_api/file=" + normalized;
+  if (normalized.startsWith("/tmp/")) normalized = "/gradio_api/file=" + normalized;
   const url = new URL(normalized, SPACE);
   if (url.protocol !== "https:" || !url.hostname.endsWith("hf.space")) {
     throw new Error("أعاد مزود الفيديو رابط ملف غير متوقع.");
@@ -67,8 +75,8 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
     }
 
     if (!response.ok) {
-      clearTimeout(timeout);
       const detail = await response.text().catch(() => "");
+      clearTimeout(timeout);
       return NextResponse.json({
         status: response.status === 404 ? "NOT_FOUND" : "FAILED",
         error: detail.slice(0, 700) || "تعذر قراءة حالة مهمة الفيديو من Hugging Face."
@@ -99,11 +107,9 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
       }
       if (eventName === "complete") {
         const videoPath = findVideoFile(payload);
-        if (!videoPath) {
-          return { status: "FAILED", error: "اكتمل رد مزود الفيديو، لكن لم أجد رابط ملف فيديو ضمن النتيجة.", details: payload };
-        }
+        if (!videoPath) return { status: "FAILED", error: "اكتمل رد مزود الفيديو، لكن لم أجد رابط ملف فيديو ضمن النتيجة.", details: payload };
         try {
-          return { status: "COMPLETED", videoUrl: absoluteFileUrl(videoPath), output: payload };
+          return { status: "COMPLETED", videoUrl: absoluteFileUrl(videoPath) };
         } catch (error) {
           return { status: "FAILED", error: error instanceof Error ? error.message : "رابط الفيديو غير صالح." };
         }
