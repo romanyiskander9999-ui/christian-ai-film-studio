@@ -60,11 +60,13 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
         cache: "no-store",
         signal: controller.signal
       });
-    } finally {
+    } catch (error) {
       clearTimeout(timeout);
+      throw error;
     }
 
     if (!response.ok) {
+      clearTimeout(timeout);
       const detail = await response.text().catch(() => "");
       return NextResponse.json({
         status: response.status === 404 ? "NOT_FOUND" : "FAILED",
@@ -72,6 +74,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
       }, { status: response.status === 404 ? 404 : 502 });
     }
     if (!response.body) {
+      clearTimeout(timeout);
       return NextResponse.json({ status: "RUNNING", message: "المهمة قيد التنفيذ ولم يصل تحديث بعد." });
     }
 
@@ -132,6 +135,8 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
       if (!(error instanceof Error && error.name === "AbortError")) {
         return NextResponse.json({ status: "RUNNING", message: "الاتصال انقطع أثناء الانتظار؛ أعد تحديث الحالة بعد قليل." });
       }
+    } finally {
+      clearTimeout(timeout);
     }
     return NextResponse.json({
       status: "RUNNING",
