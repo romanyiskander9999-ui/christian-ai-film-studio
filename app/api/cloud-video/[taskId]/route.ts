@@ -12,7 +12,7 @@ function parseSsePayload(raw: string): unknown {
 
 function findVideoFile(value: unknown, seen = new Set<unknown>()): string | null {
   if (!value || typeof value !== "object" || seen.has(value)) {
-    if (typeof value === "string" && /^(https?:\\/\\/|\\/file=|file=)/i.test(value)) return value;
+    if (typeof value === "string" && (/^(https?:\\/\\/|\\/file=|file=)/i.test(value) || /\\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(value))) return value;
     return null;
   }
   seen.add(value);
@@ -36,7 +36,8 @@ function findVideoFile(value: unknown, seen = new Set<unknown>()): string | null
 }
 
 function absoluteFileUrl(value: string): string {
-  const normalized = value.startsWith("file=") ? "/" + value : value;
+  let normalized = value.startsWith("file=") ? "/" + value : value;
+  if (/^\\/tmp\\//.test(normalized)) normalized = "/gradio_api/file=" + normalized;
   const url = new URL(normalized, SPACE);
   if (url.protocol !== "https:" || !url.hostname.endsWith("hf.space")) {
     throw new Error("أعاد مزود الفيديو رابط ملف غير متوقع.");
