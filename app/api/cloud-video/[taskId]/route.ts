@@ -95,9 +95,9 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
 
     const processBlock = (block: string) => {
       let dataText = "";
-      for (const line of block.split(/\\r?\\n/)) {
+      for (const line of block.split(/\r?\n/)) {
         if (line.startsWith("event:")) eventName = line.slice(6).trim();
-        else if (line.startsWith("data:")) dataText += (dataText ? "\\n" : "") + line.slice(5).trim();
+        else if (line.startsWith("data:")) dataText += (dataText ? "\n" : "") + line.slice(5).trim();
       }
       if (!dataText) return null;
       const payload = parseSsePayload(dataText);
@@ -123,7 +123,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ taskId
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const blocks = buffer.split(/\\r?\\n\\r?\\n/);
+        const blocks = buffer.split(/\r?\n\r?\n/);
         buffer = blocks.pop() || "";
         for (const block of blocks) {
           const result = processBlock(block);
