@@ -20,7 +20,7 @@ async function proxy(req: NextRequest) {
   if (range) headers.set("Range", range);
 
   try {
-    const upstream = await fetch(url.toString(), { headers, cache: "no-store" });
+    const upstream = await fetch(url.toString(), { method: req.method, headers, cache: "no-store" });
     if (!upstream.ok || !upstream.body) {
       return NextResponse.json({ error: "تعذر تنزيل ملف الفيديو من Hugging Face.", upstreamStatus: upstream.status }, { status: upstream.status || 502 });
     }
