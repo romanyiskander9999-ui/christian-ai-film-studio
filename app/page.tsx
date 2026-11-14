@@ -590,8 +590,8 @@ export default function Home() {
 
   return <main className="shell">
     <header className="topbar">
-      <div className="brand"><span className="crossMark">✝</span><div><b>استوديو الينبوع السينمائي</b><small>CHRISTIAN AI FILM STUDIO</small></div></div>
-      <span className="version">الإصدار التجريبي 0.1</span>
+      <div className="brand"><span className="crossMark">✝</span><div><b>استوديو الينبوع للإنتاج السينمائي</b><small>ALYANBOA CINEMATIC STUDIO</small></div></div>
+      <span className="version">نسخة العمل المتاحة · V1</span>
     </header>
 
     <section className="hero">
