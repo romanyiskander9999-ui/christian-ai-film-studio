@@ -34,6 +34,9 @@ export default function Home() {
   const [soundtrackUrl, setSoundtrackUrl] = useState("");
   const [soundtrackName, setSoundtrackName] = useState("");
   const [soundtrackVolume, setSoundtrackVolume] = useState(0.8);
+  const [brandLogoUrl, setBrandLogoUrl] = useState("");
+  const [brandLogoName, setBrandLogoName] = useState("");
+  const [copyrightText, setCopyrightText] = useState("");
   const [finalFilmUrl, setFinalFilmUrl] = useState("");
   const [speaking, setSpeaking] = useState(false);
 
@@ -301,6 +304,53 @@ export default function Home() {
     navigator.clipboard.writeText(prompt);
   }
 
+  async function createBrandOverlay(): Promise<Blob | null> {
+    if (!brandLogoUrl && !copyrightText.trim()) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 854;
+    canvas.height = 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("تعذر إنشاء طبقة الهوية البصرية على هذا المتصفح.");
+    if (brandLogoUrl) {
+      const logo = new Image();
+      logo.src = brandLogoUrl;
+      await logo.decode();
+      const scale = Math.min(112 / logo.width, 76 / logo.height, 1);
+      const width = Math.max(1, Math.round(logo.width * scale));
+      const height = Math.max(1, Math.round(logo.height * scale));
+      ctx.fillStyle = "rgba(10,16,24,0.62)";
+      ctx.fillRect(854 - width - 28, 18, width + 16, height + 16);
+      ctx.drawImage(logo, 854 - width - 20, 26, width, height);
+    }
+    if (copyrightText.trim()) {
+      ctx.fillStyle = "rgba(5,9,14,0.66)";
+      ctx.fillRect(0, 438, 854, 42);
+      ctx.direction = "rtl";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 17px Cairo, Arial, sans-serif";
+      ctx.fillText(copyrightText.trim().slice(0, 100), 832, 459, 810);
+    }
+    return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("تعذر تجهيز طبقة الشعار وحقوق الملكية.")), "image/png"));
+  }
+
+  function attachBrandLogo(file: File) {
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      setAssemblyStatus("الشعار يجب أن يكون PNG أو JPG. يفضّل PNG بخلفية شفافة.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setAssemblyStatus("حجم الشعار أكبر من 8 ميجابايت.");
+      return;
+    }
+    if (brandLogoUrl) URL.revokeObjectURL(brandLogoUrl);
+    setBrandLogoUrl(URL.createObjectURL(file));
+    setBrandLogoName(file.name);
+    setFinalFilmUrl("");
+    setAssemblyStatus("تم اختيار الشعار. سيظهر أعلى يمين الفيديو النهائي.");
+  }
+
   async function assembleFilm() {
     if (!board) return;
     const clips = board.scenes.map((scene, index) => ({ scene, index })).filter(({ scene }) => !!scene.videoUrl);
@@ -324,6 +374,8 @@ export default function Home() {
         coreURL: await toBlobURL(base + "/ffmpeg-core.js", "text/javascript"),
         wasmURL: await toBlobURL(base + "/ffmpeg-core.wasm", "application/wasm")
       });
+      const brandOverlay = await createBrandOverlay();
+      if (brandOverlay) await ffmpeg.writeFile("brand-overlay.png", await fetchFile(brandOverlay));
       const names: string[] = [];
       for (let i = 0; i < clips.length; i++) {
         setAssemblyStatus("جارٍ تجهيز المشهد " + (i + 1) + " من " + clips.length + "...");
@@ -333,11 +385,10 @@ export default function Home() {
         if (!clipResponse.ok) throw new Error("تعذر تنزيل فيديو المشهد " + (clips[i].index + 1) + ". ارفع المقطع من جهازك ثم أعد المحاولة.");
         const clipBlob = await clipResponse.blob();
         await ffmpeg.writeFile(inputName, await fetchFile(clipBlob));
-        const result = await ffmpeg.exec([
-          "-i", inputName, "-map", "0:v:0", "-vf",
-          "scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p",
-          "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-movflags", "+faststart", outputName
-        ]);
+        const videoArgs = brandOverlay
+          ? ["-i", inputName, "-i", "brand-overlay.png", "-filter_complex", "[0:v]scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2,fps=24[base];[base][1:v]overlay=0:0:format=auto,format=yuv420p[outv]", "-map", "[outv]"]
+          : ["-i", inputName, "-map", "0:v:0", "-vf", "scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2,fps=24,format=yuv420p"];
+        const result = await ffmpeg.exec([...videoArgs, "-an", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-movflags", "+faststart", outputName]);
         if (result !== 0) throw new Error("تعذر تجهيز أحد المقاطع. تأكد أن الملفات فيديو صالح.");
         await ffmpeg.deleteFile(inputName);
         names.push(outputName);
@@ -744,6 +795,13 @@ export default function Home() {
         <h3>تجميع مشاهد الفيلم في ملف MP4 واحد</h3>
         <p>سيجمع الاستوديو المقاطع التي أنتجتها أو رفعتها بترتيب المشاهد. يمكنك إضافة ملف تعليق صوتي أو موسيقى بصيغة MP3 أو WAV. تتم المعالجة داخل متصفحك باستخدام FFmpeg WebAssembly ولا تُرسل المقاطع إلى خدمة مونتاج مدفوعة.</p>
         <p><strong>المقاطع الجاهزة:</strong> {board.scenes.filter(scene => !!scene.videoUrl).length} من {board.scenes.length}</p>
+        <div className="brandExport">
+          <b>الهوية البصرية وحقوق الملكية</b>
+          <p className="muted">أضف شعارك وعبارة الحقوق لتظهر مدمجة داخل كل مشهد في الفيديو النهائي.</p>
+          <label className="secondary uploadVideo" style={{ display: "inline-flex", margin: "8px 0" }}>رفع شعار PNG أو JPG<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" onChange={e => { const file = e.currentTarget.files?.[0]; if (file) attachBrandLogo(file); e.currentTarget.value = ""; }} /></label>
+          {brandLogoName && <div className="brandPreview"><img src={brandLogoUrl} alt="معاينة شعار الاستوديو" /><span>{brandLogoName}</span><button type="button" className="secondary" onClick={() => { if (brandLogoUrl) URL.revokeObjectURL(brandLogoUrl); setBrandLogoUrl(""); setBrandLogoName(""); setFinalFilmUrl(""); }}>إزالة الشعار</button></div>}
+          <label className="field">عبارة حقوق الملكية / العلامة المائية<input value={copyrightText} onChange={e => { setCopyrightText(e.target.value); setFinalFilmUrl(""); }} maxLength={100} placeholder="© الينبوع للإنتاج السينمائي — جميع الحقوق محفوظة" /></label>
+        </div>
         <label className="secondary uploadVideo" style={{ display: "inline-flex", margin: "8px 0" }}>إضافة تعليق صوتي أو موسيقى<input type="file" accept="audio/*" onChange={e => { const file = e.target.files?.[0]; if (file) attachSoundtrack(file); e.currentTarget.value = ""; }} /></label>
         {soundtrackName && <div className="summary"><p>الملف الصوتي المختار: {soundtrackName}</p><label className="field" style={{ maxWidth: 420 }}>مستوى صوت الموسيقى أو التعليق: {Math.round(soundtrackVolume * 100)}%<input type="range" min="0" max="1" step="0.05" value={soundtrackVolume} onChange={e => setSoundtrackVolume(Number(e.target.value))} /></label><button type="button" className="secondary" onClick={() => { if (soundtrackUrl) URL.revokeObjectURL(soundtrackUrl); setSoundtrackUrl(""); setSoundtrackName(""); setFinalFilmUrl(""); }}>إزالة الملف الصوتي</button></div>}
         <div className="videoActions"><button className="primary" disabled={assemblyBusy || board.scenes.filter(scene => !!scene.videoUrl).length < 1} onClick={assembleFilm}>{assemblyBusy ? "جارٍ تجهيز الفيلم..." : "🎬 تجميع وتنزيل الفيلم MP4"}</button></div>
